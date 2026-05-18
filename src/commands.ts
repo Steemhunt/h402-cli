@@ -1,0 +1,204 @@
+import { randomUUID } from "node:crypto";
+import { assertOk, requestJson } from "./api.js";
+import { backendUrl, loadConfig, saveConfig, type CliConfig } from "./config.js";
+import { createOwsWallet, runOwsCli, signOwsMessage } from "./ows.js";
+import { promptPassphrase } from "./prompt.js";
+import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, printJson, requireValue, type ParsedArgs } from "./utils.js";
+
+function walletName(args: ParsedArgs) {
+  return flagString(args.flags, "name", "h402") as string;
+}
+
+async function walletPassphrase(args: ParsedArgs, options = { confirm: false }) {
+  const passphrase = flagString(args.flags, "passphrase", process.env.H402_WALLET_PASSPHRASE);
+  if (!passphrase) {
+    return promptPassphrase(options);
+  }
+  return passphrase;
+}
+
+async function knownWalletAddress(args: ParsedArgs, config?: CliConfig) {
+  config ??= await loadConfig();
+  const explicit = flagString(args.flags, "wallet");
+  if (explicit) return explicit.toLowerCase();
+
+  const name = walletName(args);
+  const address = config.wallets[name]?.address;
+  if (!address) {
+    throw new Error(`No address known for wallet "${name}". Run h402 wallet create --name ${name} or pass --wallet.`);
+  }
+  return address;
+}
+
+export async function walletCommand(args: ParsedArgs) {
+  const subcommand = requireValue(args.positional[1], "wallet subcommand is required");
+  const name = walletName(args);
+  const config = await loadConfig();
+
+  if (subcommand === "create") {
+    const wallet = await createOwsWallet(name, await walletPassphrase(args, { confirm: true }));
+    config.wallets[name] = { address: wallet.address };
+    await saveConfig(config);
+    printJson({ wallet: { name, address: wallet.address } });
+    return;
+  }
+
+  if (subcommand === "address") {
+    printJson({ wallet: { name, address: await knownWalletAddress(args, config) } });
+    return;
+  }
+
+  if (subcommand === "balance") {
+    const output = await runOwsCli(["fund", "balance", "--wallet", name, "--chain", "8453", "--token", "USDC"]);
+    process.stdout.write(`${output}\n`);
+    return;
+  }
+
+  if (subcommand === "fund") {
+    const output = await runOwsCli(["fund", "deposit", "--wallet", name, "--chain", "8453", "--token", "USDC"]);
+    process.stdout.write(`${output}\n`);
+    return;
+  }
+
+  throw new Error(`Unknown wallet subcommand: ${subcommand}`);
+}
+
+export async function authCommand(args: ParsedArgs) {
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  const address = await knownWalletAddress(args, config);
+  const name = walletName(args);
+  const challenge = assertOk(
+    await requestJson<{ challenge: { message: string } }>(apiUrl, "/api/auth/challenge", {
+      method: "POST",
+      body: JSON.stringify({ address })
+    })
+  ).challenge;
+  const signature = await signOwsMessage(name, challenge.message, await walletPassphrase(args));
+  const session = assertOk(
+    await requestJson<{ session: { token: string; address: string; expiresAt: string } }>(apiUrl, "/api/auth/verify", {
+      method: "POST",
+      body: JSON.stringify({ address, message: challenge.message, signature })
+    })
+  ).session;
+
+  config.backendUrl = apiUrl;
+  config.sessions[apiUrl] = session.token;
+  await saveConfig(config);
+  printJson({ session });
+}
+
+export async function searchCommand(args: ParsedArgs) {
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  const query = args.positional.slice(1).join(" ");
+  const result = assertOk(
+    await requestJson(apiUrl, `/api/catalog/search?q=${encodeURIComponent(query)}&limit=${flagString(args.flags, "limit", "20")}`)
+  );
+  printJson(result);
+}
+
+export async function creditsCommand(args: ParsedArgs) {
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  const token = config.sessions[apiUrl];
+  if (!token) {
+    throw new Error("No session token. Run h402 auth first.");
+  }
+
+  printJson(assertOk(await requestJson(apiUrl, "/api/me/credits", { token })));
+}
+
+export async function linkNftWalletCommand(args: ParsedArgs) {
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  const token = config.sessions[apiUrl];
+  if (!token) {
+    throw new Error("No session token. Run h402 auth first.");
+  }
+
+  const walletAddress = requireValue(flagString(args.flags, "wallet"), "--wallet is required");
+  printJson(
+    assertOk(
+      await requestJson(apiUrl, "/api/me/linked-wallets", {
+        method: "POST",
+        token,
+        body: JSON.stringify({ walletAddress })
+      })
+    )
+  );
+}
+
+export async function quoteCommand(args: ParsedArgs) {
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  const routeId = requireValue(args.positional[1], "route id is required");
+  const walletAddress = await knownWalletAddress(args, config);
+  const body = parseJsonFlag(args.flags);
+
+  const result = assertOk(
+    await requestJson(apiUrl, "/api/quote", {
+      method: "POST",
+      body: JSON.stringify({
+        routeId,
+        walletAddress,
+        method: flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST"),
+        body,
+        idempotencyKey: flagString(args.flags, "idempotency-key")
+      })
+    })
+  );
+
+  printJson(result);
+}
+
+export async function callCommand(args: ParsedArgs) {
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  const routeId = requireValue(args.positional[1], "route id is required");
+  const body = parseJsonFlag(args.flags);
+  const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
+  const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
+  const token = config.sessions[apiUrl];
+  const walletAddress = await knownWalletAddress(args, config);
+  const name = walletName(args);
+  const path = buildProxyPath(routeId);
+  const headers: Record<string, string> = {
+    "idempotency-key": idempotencyKey
+  };
+
+  if (token && !flagBoolean(args.flags, "no-credit")) {
+    headers.authorization = `Bearer ${token}`;
+  } else {
+    headers["x-h402-wallet"] = walletAddress;
+  }
+
+  const first = await requestJson<unknown>(apiUrl, path, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+
+  if (first.status !== 402) {
+    printJson(first.body);
+    return;
+  }
+
+  const quote = (first.body as { quote?: { id: string; message: string } }).quote;
+  if (!quote) {
+    printJson(first.body);
+    return;
+  }
+
+  const signature = await signOwsMessage(name, quote.message, await walletPassphrase(args));
+  const paid = await requestJson<unknown>(apiUrl, path, {
+    method,
+    headers: {
+      "idempotency-key": idempotencyKey,
+      "x-h402-payment": JSON.stringify({ quoteId: quote.id, walletAddress, signature })
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+
+  printJson(assertOk(paid));
+}
