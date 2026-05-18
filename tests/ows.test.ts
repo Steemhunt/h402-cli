@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getEvmAddress } from "../src/ows";
+import { getEvmAddress, normalizeOwsSignature } from "../src/ows";
 
 describe("getEvmAddress", () => {
   it("prefers the Base EVM account when present", () => {
@@ -61,5 +61,22 @@ describe("getEvmAddress", () => {
         ]
       })
     ).toThrow("no EVM address");
+  });
+});
+
+describe("normalizeOwsSignature", () => {
+  const signature =
+    "38c762fca1447aec6f91b954de18885b7ea5df8d9348b387356309ed724b5cdd4e8d9007d636c5229b821bba2e8150e3245e09bda8bef92d211644b9039d4bee1c";
+
+  it("adds a 0x prefix to 65-byte OWS EVM signatures", () => {
+    expect(normalizeOwsSignature(signature)).toBe(`0x${signature}`);
+  });
+
+  it("appends recovery id when OWS returns a compact 64-byte signature", () => {
+    expect(normalizeOwsSignature(signature.slice(0, -2), 28)).toBe(`0x${signature}`);
+  });
+
+  it("rejects malformed signatures", () => {
+    expect(() => normalizeOwsSignature("not-a-signature")).toThrow("non-hex");
   });
 });

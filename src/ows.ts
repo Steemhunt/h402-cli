@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createWallet, signMessage, type WalletInfo } from "@open-wallet-standard/core";
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+const HEX_SIGNATURE_PATTERN = /^(0x)?[a-fA-F0-9]+$/;
 
 export function getEvmAddress(wallet: WalletInfo) {
   const account =
@@ -21,8 +22,27 @@ export async function createOwsWallet(name: string, passphrase: string) {
   return { name, address: getEvmAddress(wallet), wallet };
 }
 
+export function normalizeOwsSignature(signature: string, recoveryId?: number) {
+  const normalized = signature.startsWith("0x") ? signature : `0x${signature}`;
+  if (!HEX_SIGNATURE_PATTERN.test(normalized)) {
+    throw new Error("OWS signMessage returned a non-hex signature");
+  }
+
+  if (normalized.length === 132) {
+    return normalized as `0x${string}`;
+  }
+
+  if (normalized.length === 130 && recoveryId !== undefined) {
+    const v = recoveryId > 1 ? recoveryId : recoveryId + 27;
+    return `${normalized}${v.toString(16).padStart(2, "0")}` as `0x${string}`;
+  }
+
+  throw new Error("OWS signMessage returned an invalid EVM signature length");
+}
+
 export async function signOwsMessage(walletName: string, message: string, passphrase: string) {
-  return signMessage(walletName, "evm", message, passphrase).signature;
+  const result = signMessage(walletName, "base", message, passphrase);
+  return normalizeOwsSignature(result.signature, result.recoveryId);
 }
 
 export function runOwsCli(args: string[]) {

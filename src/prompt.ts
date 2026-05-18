@@ -12,10 +12,13 @@ export async function promptHidden(question: string) {
 
     const cleanup = () => {
       stdin.off("data", onData);
-      stdin.setRawMode(wasRaw);
+      if (stdin.isTTY) {
+        stdin.setRawMode(wasRaw);
+      }
       if (wasPaused) {
         stdin.pause();
       }
+      stdin.removeAllListeners("keypress");
     };
 
     const finish = () => {
