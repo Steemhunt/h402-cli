@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createWallet, signMessage, type WalletInfo } from "@open-wallet-standard/core";
+import { createWallet, signMessage, signTypedData, type WalletInfo } from "@open-wallet-standard/core";
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const HEX_SIGNATURE_PATTERN = /^(0x)?[a-fA-F0-9]+$/;
@@ -42,6 +42,11 @@ export function normalizeOwsSignature(signature: string, recoveryId?: number) {
 
 export async function signOwsMessage(walletName: string, message: string, passphrase: string) {
   const result = signMessage(walletName, "base", message, passphrase);
+  return normalizeOwsSignature(result.signature, result.recoveryId);
+}
+
+export async function signOwsTypedData(walletName: string, typedData: unknown, passphrase: string) {
+  const result = signTypedData(walletName, "base", JSON.stringify(typedData), passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
 }
 

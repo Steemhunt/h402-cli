@@ -4,6 +4,7 @@ import { backendUrl, loadConfig, saveConfig, type CliConfig } from "./config.js"
 import { createOwsWallet, runOwsCli, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
 import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, printJson, requireValue, type ParsedArgs } from "./utils.js";
+import { createPaymentSignatureHeader, paymentRequiredFromResponse, X402_HEADERS } from "./x402.js";
 
 function walletName(args: ParsedArgs) {
   return flagString(args.flags, "name", "h402") as string;
@@ -133,23 +134,15 @@ export async function quoteCommand(args: ParsedArgs) {
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const routeId = requireValue(args.positional[1], "route id is required");
-  const walletAddress = await knownWalletAddress(args, config);
   const body = parseJsonFlag(args.flags);
+  const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
+  const result = await requestJson(apiUrl, buildProxyPath(routeId), {
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const paymentRequired = paymentRequiredFromResponse(result.headers, result.body);
 
-  const result = assertOk(
-    await requestJson(apiUrl, "/api/quote", {
-      method: "POST",
-      body: JSON.stringify({
-        routeId,
-        walletAddress,
-        method: flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST"),
-        body,
-        idempotencyKey: flagString(args.flags, "idempotency-key")
-      })
-    })
-  );
-
-  printJson(result);
+  printJson(paymentRequired ? { paymentRequired } : result.body);
 }
 
 export async function callCommand(args: ParsedArgs) {
@@ -169,8 +162,6 @@ export async function callCommand(args: ParsedArgs) {
 
   if (token && !flagBoolean(args.flags, "no-credit")) {
     headers.authorization = `Bearer ${token}`;
-  } else {
-    headers["x-h402-wallet"] = walletAddress;
   }
 
   const first = await requestJson<unknown>(apiUrl, path, {
@@ -184,18 +175,23 @@ export async function callCommand(args: ParsedArgs) {
     return;
   }
 
-  const quote = (first.body as { quote?: { id: string; message: string } }).quote;
-  if (!quote) {
+  const paymentRequired = paymentRequiredFromResponse(first.headers, first.body);
+  if (!paymentRequired) {
     printJson(first.body);
     return;
   }
 
-  const signature = await signOwsMessage(name, quote.message, await walletPassphrase(args));
+  const paymentSignature = await createPaymentSignatureHeader({
+    paymentRequired,
+    walletAddress,
+    walletName: name,
+    passphrase: await walletPassphrase(args)
+  });
   const paid = await requestJson<unknown>(apiUrl, path, {
     method,
     headers: {
       "idempotency-key": idempotencyKey,
-      "x-h402-payment": JSON.stringify({ quoteId: quote.id, walletAddress, signature })
+      [X402_HEADERS.paymentSignature]: paymentSignature
     },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
