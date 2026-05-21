@@ -23,8 +23,8 @@ Commands:
   credits
   link-nft-wallet --wallet 0x...
   search <query>
-  quote <category/action/provider>
-  call <category/action/provider>
+  quote <category/action>
+  call <category/action>
 
 Common flags:
   --name h402

@@ -19,15 +19,15 @@ h402 wallet fund --name h402
 h402 auth --name h402
 h402 credits
 h402 search "web search"
-h402 quote web/search/exa --json '{"query":"agent APIs","numResults":5}'
-h402 call web/search/exa --json '{"query":"agent APIs","numResults":5}'
+h402 quote web/search --json '{"query":"agent APIs","numResults":5}'
+h402 call web/search --json '{"query":"agent APIs","numResults":5}'
 ```
 
 The CLI keeps private keys in OWS. It stores only backend URL, session tokens, and
 known wallet addresses in `~/.h402/config.json`.
 
 `h402 quote` previews the standard x402 `PAYMENT-REQUIRED` envelope for a route.
-Proxy calls first try HUNT daily credit when an auth session is available. If the
+Proxy calls first try HUNT weekly credit when an auth session is available. If the
 backend returns x402 `PAYMENT-REQUIRED`, the CLI signs a Base USDC EIP-3009
 `PAYMENT-SIGNATURE` locally through OWS and retries the same request.
 

@@ -3,8 +3,8 @@ import { buildProxyPath, parseArgs } from "../src/utils";
 
 describe("parseArgs", () => {
   it("parses positional arguments and flags", () => {
-    expect(parseArgs(["call", "web/search/exa", "--name", "agent", "--no-credit"])).toEqual({
-      positional: ["call", "web/search/exa"],
+    expect(parseArgs(["call", "web/search", "--name", "agent", "--no-credit"])).toEqual({
+      positional: ["call", "web/search"],
       flags: { name: "agent", "no-credit": true }
     });
   });
@@ -12,10 +12,10 @@ describe("parseArgs", () => {
 
 describe("buildProxyPath", () => {
   it("maps route ids to backend proxy paths", () => {
-    expect(buildProxyPath("web/search/exa")).toBe("/api/proxy/web/search/exa");
+    expect(buildProxyPath("web/search")).toBe("/api/proxy/web/search");
   });
 
   it("rejects malformed route ids", () => {
-    expect(() => buildProxyPath("web/search")).toThrow("Route id must look like");
+    expect(() => buildProxyPath("web/search/exa")).toThrow("Route id must look like");
   });
 });

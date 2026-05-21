@@ -61,8 +61,8 @@ export function requireValue<T>(value: T | undefined | null, message: string): T
 
 export function buildProxyPath(routeId: string) {
   const parts = routeId.split("/");
-  if (parts.length !== 3 || parts.some((part) => !part)) {
-    throw new Error("Route id must look like category/action/provider");
+  if (parts.length !== 2 || parts.some((part) => !part)) {
+    throw new Error("Route id must look like category/action");
   }
   return `/api/proxy/${parts.map(encodeURIComponent).join("/")}`;
 }
