@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { assertOk, requestJson } from "./api.js";
 import { backendUrl, loadConfig, saveConfig, type CliConfig } from "./config.js";
+import { buildBuildingDelegationRequest } from "./delegation.js";
 import { createOwsWallet, runOwsCli, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
 import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, printJson, requireValue, type ParsedArgs } from "./utils.js";
@@ -110,7 +111,7 @@ export async function creditsCommand(args: ParsedArgs) {
   printJson(assertOk(await requestJson(apiUrl, "/api/me/credits", { token })));
 }
 
-export async function linkNftWalletCommand(args: ParsedArgs) {
+export async function delegationCommand(args: ParsedArgs) {
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const token = config.sessions[apiUrl];
@@ -118,13 +119,15 @@ export async function linkNftWalletCommand(args: ParsedArgs) {
     throw new Error("No session token. Run h402 auth first.");
   }
 
-  const walletAddress = requireValue(flagString(args.flags, "wallet"), "--wallet is required");
+  const subcommand = args.positional[1];
+  const defaultDelegateAddress = subcommand === "list" || flagString(args.flags, "delegate") ? undefined : await knownWalletAddress(args, config);
+  const request = buildBuildingDelegationRequest(args, defaultDelegateAddress);
   printJson(
     assertOk(
-      await requestJson(apiUrl, "/api/me/linked-wallets", {
-        method: "POST",
+      await requestJson(apiUrl, request.path, {
+        method: request.method,
         token,
-        body: JSON.stringify({ walletAddress })
+        body: request.body ? JSON.stringify(request.body) : undefined
       })
     )
   );

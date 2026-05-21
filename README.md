@@ -18,6 +18,9 @@ h402 wallet balance --name h402
 h402 wallet fund --name h402
 h402 auth --name h402
 h402 credits
+h402 delegation list
+h402 delegation save --units 10
+h402 delegation delete --delegate 0x...
 h402 search "web search"
 h402 quote web/search --json '{"query":"agent APIs","numResults":5}'
 h402 call web/search --json '{"query":"agent APIs","numResults":5}'
@@ -25,6 +28,10 @@ h402 call web/search --json '{"query":"agent APIs","numResults":5}'
 
 The CLI keeps private keys in OWS. It stores only backend URL, session tokens, and
 known wallet addresses in `~/.h402/config.json`.
+
+`h402 delegation save` routes Building NFT weekly credit units from the
+authenticated owner wallet to a delegate wallet. If `--delegate` is omitted, the
+CLI uses the selected OWS wallet address as the delegate.
 
 `h402 quote` previews the standard x402 `PAYMENT-REQUIRED` envelope for a route.
 Proxy calls first try HUNT weekly credit when an auth session is available. If the
