@@ -55,7 +55,7 @@ export async function walletCommand(args: ParsedArgs) {
   }
 
   if (subcommand === "balance") {
-    const output = await runOwsCli(["fund", "balance", "--wallet", name, "--chain", "8453", "--token", "USDC"]);
+    const output = await runOwsCli(["fund", "balance", "--wallet", name, "--chain", "base"]);
     process.stdout.write(`${output}\n`);
     return;
   }
