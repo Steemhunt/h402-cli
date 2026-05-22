@@ -65,7 +65,7 @@ export async function createPaymentSignatureHeader(input: {
   paymentRequired: X402PaymentRequired;
   walletAddress: string;
   walletName: string;
-  passphrase: string;
+  passphrase?: string;
 }) {
   const accepted = selectBaseUsdcExactRequirement(input.paymentRequired);
   const now = Math.floor(Date.now() / 1000);

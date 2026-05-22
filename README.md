@@ -13,6 +13,7 @@ npm run build
 
 ```bash
 h402 wallet create --name h402
+h402 wallet create --name h402-test --no-passphrase
 h402 wallet address --name h402
 h402 wallet balance --name h402
 h402 wallet fund --name h402
@@ -41,5 +42,8 @@ backend returns x402 `PAYMENT-REQUIRED`, the CLI signs a Base USDC EIP-3009
 Passphrases are never stored by h402. Interactive commands prompt with hidden
 input when no passphrase is provided. For non-interactive use, set
 `H402_WALLET_PASSPHRASE`.
+
+Use `--no-passphrase` only for disposable test wallets. It creates and signs
+with the selected OWS wallet without prompting for a passphrase.
 
 Set `H402_API_URL` or pass `--api-url` to point at another backend.

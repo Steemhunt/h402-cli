@@ -17,7 +17,7 @@ export function getEvmAddress(wallet: WalletInfo) {
   return account.address.toLowerCase();
 }
 
-export async function createOwsWallet(name: string, passphrase: string) {
+export async function createOwsWallet(name: string, passphrase?: string) {
   const wallet = createWallet(name, passphrase);
   return { name, address: getEvmAddress(wallet), wallet };
 }
@@ -40,12 +40,12 @@ export function normalizeOwsSignature(signature: string, recoveryId?: number) {
   throw new Error("OWS signMessage returned an invalid EVM signature length");
 }
 
-export async function signOwsMessage(walletName: string, message: string, passphrase: string) {
+export async function signOwsMessage(walletName: string, message: string, passphrase?: string) {
   const result = signMessage(walletName, "base", message, passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
 }
 
-export async function signOwsTypedData(walletName: string, typedData: unknown, passphrase: string) {
+export async function signOwsTypedData(walletName: string, typedData: unknown, passphrase?: string) {
   const result = signTypedData(walletName, "base", JSON.stringify(typedData), passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
 }

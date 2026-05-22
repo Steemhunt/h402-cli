@@ -12,6 +12,10 @@ function walletName(args: ParsedArgs) {
 }
 
 async function walletPassphrase(args: ParsedArgs, options = { confirm: false }) {
+  if (flagBoolean(args.flags, "no-passphrase")) {
+    return undefined;
+  }
+
   const passphrase = flagString(args.flags, "passphrase", process.env.H402_WALLET_PASSPHRASE);
   if (!passphrase) {
     return promptPassphrase(options);
