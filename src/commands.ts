@@ -4,7 +4,7 @@ import { backendUrl, loadConfig, saveConfig, type CliConfig } from "./config.js"
 import { buildBuildingDelegationRequest } from "./delegation.js";
 import { createOwsWallet, runOwsCli, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
-import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, printJson, requireValue, type ParsedArgs } from "./utils.js";
+import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, type ParsedArgs } from "./utils.js";
 import { createPaymentSignatureHeader, paymentRequiredFromResponse, X402_HEADERS } from "./x402.js";
 
 function walletName(args: ParsedArgs) {
@@ -142,8 +142,9 @@ export async function quoteCommand(args: ParsedArgs) {
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const routeId = requireValue(args.positional[1], "route id is required");
   const body = parseJsonFlag(args.flags);
+  const query = parseQueryFlag(args.flags);
   const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
-  const result = await requestJson(apiUrl, buildProxyPath(routeId), {
+  const result = await requestJson(apiUrl, buildProxyPath(routeId, query), {
     method,
     body: body === undefined ? undefined : JSON.stringify(body)
   });
@@ -157,12 +158,13 @@ export async function callCommand(args: ParsedArgs) {
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const routeId = requireValue(args.positional[1], "route id is required");
   const body = parseJsonFlag(args.flags);
+  const query = parseQueryFlag(args.flags);
   const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
   const token = config.sessions[apiUrl];
   const walletAddress = await knownWalletAddress(args, config);
   const name = walletName(args);
-  const path = buildProxyPath(routeId);
+  const path = buildProxyPath(routeId, query);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
   };

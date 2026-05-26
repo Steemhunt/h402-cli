@@ -48,6 +48,18 @@ export function parseJsonFlag(flags: Record<string, string | boolean>) {
   return JSON.parse(value) as unknown;
 }
 
+export function parseQueryFlag(flags: Record<string, string | boolean>) {
+  const value = flagString(flags, "query");
+  if (!value) {
+    return undefined;
+  }
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("--query must be a JSON object");
+  }
+  return parsed as Record<string, unknown>;
+}
+
 export function printJson(data: unknown) {
   process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
 }
@@ -59,10 +71,21 @@ export function requireValue<T>(value: T | undefined | null, message: string): T
   return value;
 }
 
-export function buildProxyPath(routeId: string) {
+export function buildProxyPath(routeId: string, query?: Record<string, unknown>) {
   const parts = routeId.split("/");
   if (parts.length !== 2 || parts.some((part) => !part)) {
     throw new Error("Route id must look like category/action");
   }
-  return `/api/proxy/${parts.map(encodeURIComponent).join("/")}`;
+  const path = `/api/proxy/${parts.map(encodeURIComponent).join("/")}`;
+  if (!query) {
+    return path;
+  }
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      searchParams.set(key, String(value));
+    }
+  }
+  const queryString = searchParams.toString();
+  return queryString ? `${path}?${queryString}` : path;
 }

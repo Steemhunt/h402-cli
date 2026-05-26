@@ -31,6 +31,7 @@ Common flags:
   --wallet 0x...
   --api-url http://localhost:3000
   --json '{"query":"agent APIs"}'
+  --query '{"placeId":"ChIJ..."}'
   --no-passphrase
 `);
     return;
