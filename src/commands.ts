@@ -143,8 +143,9 @@ export async function quoteCommand(args: ParsedArgs) {
   const routeId = requireValue(args.positional[1], "route id is required");
   const body = parseJsonFlag(args.flags);
   const query = parseQueryFlag(args.flags);
+  const provider = flagString(args.flags, "provider");
   const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
-  const result = await requestJson(apiUrl, buildProxyPath(routeId, query), {
+  const result = await requestJson(apiUrl, buildProxyPath(routeId, query, provider), {
     method,
     body: body === undefined ? undefined : JSON.stringify(body)
   });
@@ -159,12 +160,13 @@ export async function callCommand(args: ParsedArgs) {
   const routeId = requireValue(args.positional[1], "route id is required");
   const body = parseJsonFlag(args.flags);
   const query = parseQueryFlag(args.flags);
+  const provider = flagString(args.flags, "provider");
   const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
   const token = config.sessions[apiUrl];
   const walletAddress = await knownWalletAddress(args, config);
   const name = walletName(args);
-  const path = buildProxyPath(routeId, query);
+  const path = buildProxyPath(routeId, query, provider);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
   };

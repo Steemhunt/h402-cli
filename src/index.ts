@@ -32,6 +32,7 @@ Common flags:
   --api-url http://localhost:3000
   --json '{"query":"agent APIs"}'
   --query '{"placeId":"ChIJ..."}'
+  --provider exa
   --no-passphrase
 `);
     return;

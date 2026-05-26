@@ -71,20 +71,23 @@ export function requireValue<T>(value: T | undefined | null, message: string): T
   return value;
 }
 
-export function buildProxyPath(routeId: string, query?: Record<string, unknown>) {
+export function buildProxyPath(routeId: string, query?: Record<string, unknown>, provider?: string) {
   const parts = routeId.split("/");
   if (parts.length !== 2 || parts.some((part) => !part)) {
     throw new Error("Route id must look like category/action");
   }
   const path = `/api/proxy/${parts.map(encodeURIComponent).join("/")}`;
   if (!query) {
-    return path;
+    return provider ? `${path}?provider=${encodeURIComponent(provider)}` : path;
   }
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       searchParams.set(key, String(value));
     }
+  }
+  if (provider) {
+    searchParams.set("provider", provider);
   }
   const queryString = searchParams.toString();
   return queryString ? `${path}?${queryString}` : path;

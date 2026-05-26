@@ -21,6 +21,13 @@ describe("buildProxyPath", () => {
     );
   });
 
+  it("appends provider override parameters", () => {
+    expect(buildProxyPath("web/search", undefined, "exa")).toBe("/api/proxy/web/search?provider=exa");
+    expect(buildProxyPath("web/search", { query: "best AI tools", provider: "ignored" }, "firecrawl")).toBe(
+      "/api/proxy/web/search?query=best+AI+tools&provider=firecrawl"
+    );
+  });
+
   it("rejects malformed route ids", () => {
     expect(() => buildProxyPath("web/search/exa")).toThrow("Route id must look like");
   });
