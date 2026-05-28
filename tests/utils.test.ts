@@ -22,9 +22,9 @@ describe("buildProxyPath", () => {
   });
 
   it("appends provider override parameters", () => {
-    expect(buildProxyPath("web/search", undefined, "exa")).toBe("/api/proxy/web/search?provider=exa");
-    expect(buildProxyPath("web/search", { query: "best AI tools", provider: "ignored" }, "firecrawl")).toBe(
-      "/api/proxy/web/search?query=best+AI+tools&provider=firecrawl"
+    expect(buildProxyPath("web/search", undefined, "stableenrich-exa")).toBe("/api/proxy/web/search?provider=stableenrich-exa");
+    expect(buildProxyPath("web/search", { query: "best AI tools", provider: "ignored" }, "stableenrich-firecrawl")).toBe(
+      "/api/proxy/web/search?query=best+AI+tools&provider=stableenrich-firecrawl"
     );
   });
 
