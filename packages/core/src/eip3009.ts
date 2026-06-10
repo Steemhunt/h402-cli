@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { BASE_NETWORK, type X402Network } from "./constants.js";
 import type { X402PaymentRequired, X402PaymentRequirements } from "./types.js";
 
@@ -11,8 +10,11 @@ export type TransferAuthorization = {
   nonce: `0x${string}`;
 };
 
+// Web Crypto so the toolkit works in both Node (>=20) and browsers.
 export function createNonce(): `0x${string}` {
-  return `0x${randomBytes(32).toString("hex")}`;
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
 /**

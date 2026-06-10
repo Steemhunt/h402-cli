@@ -7,12 +7,20 @@ export const X402_HEADERS = {
   paymentResponse: "PAYMENT-RESPONSE"
 } as const;
 
+// btoa/atob + TextEncoder instead of Buffer so the codecs work in browsers too.
 export function encodeX402Header(value: unknown) {
-  return Buffer.from(JSON.stringify(value), "utf8").toString("base64");
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 }
 
 export function decodeX402Header<T>(value: string) {
-  return JSON.parse(Buffer.from(value, "base64").toString("utf8")) as T;
+  const binary = atob(value);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes)) as T;
 }
 
 /** Read an x402 `PAYMENT-REQUIRED` from a response header, falling back to the body. */
