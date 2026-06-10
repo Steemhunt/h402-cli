@@ -6,9 +6,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
 [![Base · x402](https://img.shields.io/badge/Base-x402-fc6f6f.svg)](https://x402.org)
 
-Open-source toolkit for **h402 — the capability marketplace for AI agents**. Agents call one endpoint per task; h402 routes each call to the best provider and settles per call in Base USDC over x402.
+Open-source toolkit for **h402 — the x402 router for agent capabilities**. One endpoint per task: h402 routes each call to the best API provider and settles per call in Base USDC over x402.
 
-> x402 is the rail. h402 is the store.
+> x402 is the rail. h402 is the router.
 
 This repository is an npm-workspaces monorepo with two packages:
 

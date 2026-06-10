@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/%40h402%2Fcli?label=%40h402%2Fcli)](https://www.npmjs.com/package/@h402/cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 
-Local, non-custodial CLI for [h402](../../README.md) — the capability marketplace for AI agents. Browse the catalog, get a quote, and pay-per-call from a local wallet. Private keys never leave your machine.
+Local, non-custodial CLI for [h402](../../README.md) — the x402 router for agent capabilities. Browse the catalog, get a quote, and pay-per-call from a local wallet. Private keys never leave your machine.
 
 ## Install
 
