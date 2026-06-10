@@ -11,20 +11,20 @@ describe("parseArgs", () => {
 });
 
 describe("buildProxyPath", () => {
-  it("maps route ids to backend proxy paths", () => {
-    expect(buildProxyPath("web/search")).toBe("/api/proxy/web/search");
+  it("maps route ids to auto-routed backend paths", () => {
+    expect(buildProxyPath("web/search")).toBe("/routes/auto/web/search");
   });
 
   it("appends primitive query parameters", () => {
     expect(buildProxyPath("maps/place-details", { placeId: "ChIJ123", includePhotos: false, maxResults: 3 })).toBe(
-      "/api/proxy/maps/place-details?placeId=ChIJ123&includePhotos=false&maxResults=3"
+      "/routes/auto/maps/place-details?placeId=ChIJ123&includePhotos=false&maxResults=3"
     );
   });
 
-  it("appends provider override parameters", () => {
-    expect(buildProxyPath("web/search", undefined, "stableenrich-exa")).toBe("/api/proxy/web/search?provider=stableenrich-exa");
-    expect(buildProxyPath("web/search", { query: "best AI tools", provider: "ignored" }, "stableenrich-firecrawl")).toBe(
-      "/api/proxy/web/search?query=best+AI+tools&provider=stableenrich-firecrawl"
+  it("pins providers through the path segment", () => {
+    expect(buildProxyPath("web/search", undefined, "stableenrich-exa")).toBe("/routes/stableenrich-exa/web/search");
+    expect(buildProxyPath("web/search", { query: "best AI tools" }, "stableenrich-firecrawl")).toBe(
+      "/routes/stableenrich-firecrawl/web/search?query=best+AI+tools"
     );
   });
 
