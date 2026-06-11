@@ -35,7 +35,9 @@ export function buildTransferAuthorization(input: {
     to: input.to,
     value: input.amount,
     validAfter: String(now - 5),
-    validBefore: String(now + input.maxTimeoutSeconds),
+    // Floor defensively: a fractional timeout from an upstream challenge would
+    // produce a non-integer uint256 string that wallets reject.
+    validBefore: String(now + Math.floor(input.maxTimeoutSeconds)),
     nonce: createNonce()
   };
 }

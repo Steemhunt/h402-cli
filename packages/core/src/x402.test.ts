@@ -81,6 +81,17 @@ describe("buildTransferAuthorization", () => {
     expect(authorization.nonce).toMatch(/^0x[a-f0-9]{64}$/);
   });
 
+  it("floors fractional timeouts so uint256 strings stay integral", () => {
+    const authorization = buildTransferAuthorization({
+      from: "0xfrom000000000000000000000000000000000000",
+      to: "0xto00000000000000000000000000000000000000",
+      amount: "50000",
+      maxTimeoutSeconds: 1617.5364150211697,
+      now: 1_000
+    });
+    expect(authorization.validBefore).toBe("2617");
+  });
+
   it("creates unique 32-byte nonces", () => {
     expect(createNonce()).not.toBe(createNonce());
     expect(createNonce()).toMatch(/^0x[a-f0-9]{64}$/);
