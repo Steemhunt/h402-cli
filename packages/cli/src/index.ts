@@ -3,7 +3,6 @@ import {
   authCommand,
   callCommand,
   creditsCommand,
-  delegationCommand,
   quoteCommand,
   searchCommand,
   walletCommand
@@ -21,7 +20,6 @@ Commands:
   wallet create|address|balance|fund
   auth
   credits
-  delegation list|save|delete
   search <query>
   quote <category/action>
   call <category/action>
@@ -41,7 +39,6 @@ Common flags:
   if (command === "wallet") return walletCommand(args);
   if (command === "auth") return authCommand(args);
   if (command === "credits") return creditsCommand(args);
-  if (command === "delegation") return delegationCommand(args);
   if (command === "search") return searchCommand(args);
   if (command === "quote") return quoteCommand(args);
   if (command === "call") return callCommand(args);

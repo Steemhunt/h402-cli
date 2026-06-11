@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { assertOk, requestJson } from "./api.js";
 import { backendUrl, loadConfig, saveConfig, type CliConfig } from "./config.js";
-import { buildBuildingDelegationRequest } from "./delegation.js";
 import { createOwsWallet, runOwsCli, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
 import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, type ParsedArgs } from "./utils.js";
@@ -113,28 +112,6 @@ export async function creditsCommand(args: ParsedArgs) {
   }
 
   printJson(assertOk(await requestJson(apiUrl, "/api/me/credits", { token })));
-}
-
-export async function delegationCommand(args: ParsedArgs) {
-  const config = await loadConfig();
-  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
-  const token = config.sessions[apiUrl];
-  if (!token) {
-    throw new Error("No session token. Run h402 auth first.");
-  }
-
-  const subcommand = args.positional[1];
-  const defaultDelegateAddress = subcommand === "list" || flagString(args.flags, "delegate") ? undefined : await knownWalletAddress(args, config);
-  const request = buildBuildingDelegationRequest(args, defaultDelegateAddress);
-  printJson(
-    assertOk(
-      await requestJson(apiUrl, request.path, {
-        method: request.method,
-        token,
-        body: request.body ? JSON.stringify(request.body) : undefined
-      })
-    )
-  );
 }
 
 export async function quoteCommand(args: ParsedArgs) {

@@ -83,7 +83,7 @@ type UsdcAsset = {
 
 export type H402CreditExtension = {
   version: "1";
-  type: "weekly-free-credit";
+  type: "bonus-credit";
   routeId: string;
   requiredAmount: string;
   asset: UsdcAsset;
@@ -92,11 +92,6 @@ export type H402CreditExtension = {
     challengePath: "/api/auth/challenge";
     verifyPath: "/api/auth/verify";
     creditsPath: "/api/me/credits";
-  };
-  delegation: {
-    path: "/api/me/building-delegations";
-    unit: "mini-building";
-    note: string;
   };
 };
 
