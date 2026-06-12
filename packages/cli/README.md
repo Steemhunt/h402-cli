@@ -30,7 +30,7 @@ npm install -g @h402/cli
 ```bash
 h402 wallet create --name agent
 h402 auth --name agent
-h402 call web/search --json '{"query":"agent APIs","numResults":5}'
+h402 call web/search --json '{"query":"agent APIs","limit":5}'
 ```
 
 Proxy calls first draw down bonus credit when a session exists. On an x402 `PAYMENT-REQUIRED`, the CLI signs a Base USDC EIP-3009 `PAYMENT-SIGNATURE` locally and retries the same request.
