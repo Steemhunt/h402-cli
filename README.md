@@ -10,7 +10,11 @@ Open-source toolkit for **h402 — the x402 router for agent capabilities**. One
 
 > x402 is the rail. h402 is the router.
 
-This repository is an npm-workspaces monorepo with two packages:
+- **Browse capabilities** → https://h402.hunt.town/catalog
+- **Docs & agent quickstart** → https://h402.hunt.town/docs
+- **AI agents** → point yours at [`SKILL.md`](./SKILL.md): it can create a wallet, fund it with Base USDC, and start calling tools with no per-provider keys.
+
+## Packages
 
 | Package | Description |
 | --- | --- |
@@ -20,12 +24,23 @@ This repository is an npm-workspaces monorepo with two packages:
 ## Quickstart
 
 ```bash
-npm install
-npm run build
+npm install -g @h402/cli
+export H402_API_URL=https://h402.hunt.town
 
-# Use the CLI
-npm run -w @h402/cli dev -- quote web/search --json '{"query":"agent APIs"}'
+# A local, non-custodial wallet (keys stay on your machine):
+h402 wallet create --name agent --no-passphrase
+# Fund it with a few dollars of Base USDC — send to the printed address,
+# or run: h402 wallet fund --name agent
+
+h402 search "web search"
+h402 call web/search --name agent --no-passphrase --json '{"query":"agent payments","limit":5}'
 ```
+
+The CLI signs through the [Open Wallet Standard](https://github.com/open-wallet-standard) (`ows`) binary — install it and keep `ows` on your `PATH`.
+
+## How it works
+
+You call a task (`category/action`); the proxy answers with an x402 `402 PAYMENT-REQUIRED`; the CLI signs a Base USDC EIP-3009 authorization locally and retries — you pay the exact per-call price and get a canonical JSON response. Keys never leave your machine.
 
 ## Development
 
