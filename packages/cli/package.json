@@ -13,7 +13,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hunt-town/h402.git",
+    "url": "git+https://github.com/Steemhunt/h402-cli.git",
     "directory": "packages/cli"
   },
   "homepage": "https://h402.hunt.town",

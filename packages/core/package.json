@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "description": "Open x402/h402 protocol toolkit: types, headers, and EIP-3009 helpers for Base USDC agent payments.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Steemhunt/h402-cli.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://h402.hunt.town",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
