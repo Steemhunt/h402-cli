@@ -27,7 +27,7 @@ Commands:
 Common flags:
   --name h402
   --wallet 0x...
-  --api-url http://localhost:3000
+  --api-url https://h402.hunt.town
   --json '{"query":"agent APIs"}'
   --query '{"placeId":"ChIJ..."}'
   --provider exa
