@@ -44,7 +44,7 @@ h402 call web/search --name agent --no-passphrase --json '{"query":"agent APIs",
 | Flag | Applies to | Description |
 | --- | --- | --- |
 | `--name <wallet>` | all | Wallet to use (default `h402`) |
-| `--wallet 0x...` | all | Use an explicit address instead of `--name` |
+| `--wallet 0x...` | all | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
 | `--api-url <url>` | all | Backend base URL (or `H402_API_URL`; default `http://localhost:3000`) |
 | `--json '{...}'` | quote, call | Request body (sets method to POST) |
 | `--query '{...}'` | quote, call | URL query params (GET) |
