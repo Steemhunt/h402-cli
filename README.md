@@ -54,6 +54,16 @@ npm test           # vitest across packages
 
 Node 22+. ESM throughout.
 
+## Releasing
+
+Before publishing, verify each package tarball will ship its compiled `dist`:
+
+```bash
+npm run verify:pack
+```
+
+Each package's `prepack` builds `dist` automatically on `npm pack` / `npm publish`; `verify:pack` asserts the tarball contents so a clean checkout can never publish a package without its JS/types.
+
 ## License
 
 MIT
