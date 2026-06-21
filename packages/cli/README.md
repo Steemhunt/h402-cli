@@ -18,12 +18,12 @@ npm install -g @h402/cli
 ## Quickstart
 
 ```bash
-export H402_API_URL=https://h402.hunt.town
-
 h402 wallet create --name agent --no-passphrase      # local wallet
 h402 wallet fund --name agent                        # or send Base USDC to the address
 h402 call web/search --name agent --no-passphrase --json '{"query":"agent APIs","limit":5}'
 ```
+
+Calls hit the production backend (`https://h402.hunt.town`) by default — override with `--api-url` or `H402_API_URL` (e.g. `http://localhost:3000` for local dev).
 
 ## Commands
 
@@ -45,7 +45,7 @@ h402 call web/search --name agent --no-passphrase --json '{"query":"agent APIs",
 | --- | --- | --- |
 | `--name <wallet>` | all | Wallet to use (default `h402`) |
 | `--wallet 0x...` | all | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
-| `--api-url <url>` | all | Backend base URL (or `H402_API_URL`; default `http://localhost:3000`) |
+| `--api-url <url>` | all | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`) |
 | `--json '{...}'` | quote, call | Request body (sets method to POST) |
 | `--query '{...}'` | quote, call | URL query params (GET) |
 | `--provider <name>` | quote, call | Pin a provider; default is `auto` (h402 picks the best) |
@@ -78,7 +78,6 @@ before USDC unless you pass `--no-credit`.
 Everything is non-interactive and JSON-first:
 
 ```bash
-export H402_API_URL=https://h402.hunt.town
 export H402_WALLET_PASSPHRASE=...                 # or use --no-passphrase
 
 h402 search "token holders"                        # JSON to stdout
@@ -90,7 +89,7 @@ h402 call crypto/token-holders --name agent \
 
 | Variable | Purpose |
 | --- | --- |
-| `H402_API_URL` | Backend base URL (or `--api-url`) |
+| `H402_API_URL` | Backend base URL override (or `--api-url`; default `https://h402.hunt.town`) |
 | `H402_OWS_BIN` | Path to the OWS binary (default `ows`) |
 | `H402_WALLET_PASSPHRASE` | Non-interactive passphrase for signing |
 

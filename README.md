@@ -25,7 +25,6 @@ Open-source toolkit for **h402 — the x402 router for agent capabilities**. One
 
 ```bash
 npm install -g @h402/cli
-export H402_API_URL=https://h402.hunt.town
 
 # A local, non-custodial wallet (keys stay on your machine):
 h402 wallet create --name agent --no-passphrase
@@ -35,6 +34,8 @@ h402 wallet create --name agent --no-passphrase
 h402 search "web search"
 h402 call web/search --name agent --no-passphrase --json '{"query":"agent payments","limit":5}'
 ```
+
+The CLI targets the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` only when pointing at another backend such as local dev.
 
 The CLI signs through the [Open Wallet Standard](https://github.com/open-wallet-standard) (`ows`) binary — install it and keep `ows` on your `PATH`.
 
@@ -53,6 +54,16 @@ npm test           # vitest across packages
 ```
 
 Node 22+. ESM throughout.
+
+## Releasing
+
+Before publishing, verify each package tarball will ship its compiled `dist`:
+
+```bash
+npm run verify:pack
+```
+
+Each package's `prepack` builds `dist` automatically on `npm pack` / `npm publish`; `verify:pack` asserts the tarball contents so a clean checkout can never publish a package without its JS/types.
 
 ## License
 

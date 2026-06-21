@@ -8,7 +8,9 @@ export type CliConfig = {
   wallets: Record<string, { address?: string }>;
 };
 
-const DEFAULT_BACKEND_URL = "http://localhost:3000";
+// @h402/cli is an end-user tool: default to the production backend. Override
+// with --api-url or H402_API_URL (e.g. http://localhost:3000 for local dev).
+const DEFAULT_BACKEND_URL = "https://h402.hunt.town";
 
 function configPath() {
   return path.join(os.homedir(), ".h402", "config.json");

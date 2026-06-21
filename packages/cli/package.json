@@ -32,6 +32,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepack": "npm run build -w @h402/core && npm run build",
     "dev": "tsx src/index.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

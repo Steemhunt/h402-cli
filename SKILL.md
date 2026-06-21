@@ -30,8 +30,9 @@ and a Base USDC–funded wallet.
 ```bash
 npm install -g @h402/cli            # the CLI
 # Install the Open Wallet Standard binary and ensure `ows` is on your PATH.
-export H402_API_URL=https://h402.hunt.town
 ```
+
+Calls go to the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` to point at another backend.
 
 Create a wallet — a disposable, no-passphrase wallet is fine as an agent budget wallet:
 
@@ -78,7 +79,7 @@ on a retry — h402 dedupes by it, so a resent paid request never double-charges
 
 ## Running non-interactively (agents)
 
-- `export H402_API_URL=https://h402.hunt.town` — no `--api-url` needed.
+- Defaults to the production backend (`https://h402.hunt.town`); set `H402_API_URL` or `--api-url` only to override.
 - `export H402_WALLET_PASSPHRASE=...` (or `--no-passphrase` for a disposable wallet) — no prompt.
 - Read stdout as JSON; check the process exit code (non-zero = failure, message on stderr).
 - Pass `--idempotency-key <uuid>` when you retry a `call`.
