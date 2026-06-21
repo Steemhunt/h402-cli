@@ -6,8 +6,10 @@ import { promptPassphrase } from "./prompt.js";
 import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, type ParsedArgs } from "./utils.js";
 import { createPaymentSignatureHeader, paymentRequiredFromResponse, X402_HEADERS } from "./x402.js";
 
+const DEFAULT_WALLET_NAME = "h402";
+
 function walletName(args: ParsedArgs) {
-  return flagString(args.flags, "name", "h402") as string;
+  return flagString(args.flags, "name", DEFAULT_WALLET_NAME) as string;
 }
 
 async function walletPassphrase(args: ParsedArgs, options = { confirm: false }) {
@@ -22,17 +24,40 @@ async function walletPassphrase(args: ParsedArgs, options = { confirm: false }) 
   return passphrase;
 }
 
-async function knownWalletAddress(args: ParsedArgs, config?: CliConfig) {
+// Resolve the wallet that will BOTH sign and own the request address, so the two
+// can never silently diverge. The OWS signer is keyed by wallet *name*, so the
+// address presented upstream must be that wallet's address — not an unrelated
+// `--wallet` string. `--name` selects by name; `--wallet` selects the local
+// wallet that owns that address; if both are given they must agree.
+export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig): Promise<{ name: string; address: string }> {
   config ??= await loadConfig();
-  const explicit = flagString(args.flags, "wallet");
-  if (explicit) return explicit.toLowerCase();
+  const explicitAddress = flagString(args.flags, "wallet")?.toLowerCase();
+  const explicitName = flagString(args.flags, "name");
 
-  const name = walletName(args);
-  const address = config.wallets[name]?.address;
-  if (!address) {
-    throw new Error(`No address known for wallet "${name}". Run h402 wallet create --name ${name} or pass --wallet.`);
+  if (explicitName) {
+    const address = config.wallets[explicitName]?.address?.toLowerCase();
+    if (!address) {
+      throw new Error(`No address known for wallet "${explicitName}". Run: h402 wallet create --name ${explicitName}`);
+    }
+    if (explicitAddress && explicitAddress !== address) {
+      throw new Error(`--wallet ${explicitAddress} does not match wallet "${explicitName}" (${address}). Omit --wallet or pass the wallet that owns this address.`);
+    }
+    return { name: explicitName, address };
   }
-  return address;
+
+  if (explicitAddress) {
+    const owner = Object.entries(config.wallets).find(([, wallet]) => wallet.address?.toLowerCase() === explicitAddress);
+    if (!owner) {
+      throw new Error(`No local wallet owns address ${explicitAddress}. Create it (h402 wallet create) or select one with --name.`);
+    }
+    return { name: owner[0], address: explicitAddress };
+  }
+
+  const address = config.wallets[DEFAULT_WALLET_NAME]?.address?.toLowerCase();
+  if (!address) {
+    throw new Error(`No address known for wallet "${DEFAULT_WALLET_NAME}". Run: h402 wallet create --name ${DEFAULT_WALLET_NAME} (or pass --name/--wallet).`);
+  }
+  return { name: DEFAULT_WALLET_NAME, address };
 }
 
 export async function walletCommand(args: ParsedArgs) {
@@ -49,7 +74,7 @@ export async function walletCommand(args: ParsedArgs) {
   }
 
   if (subcommand === "address") {
-    printJson({ wallet: { name, address: await knownWalletAddress(args, config) } });
+    printJson({ wallet: await resolveSigningWallet(args, config) });
     return;
   }
 
@@ -71,8 +96,7 @@ export async function walletCommand(args: ParsedArgs) {
 export async function authCommand(args: ParsedArgs) {
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
-  const address = await knownWalletAddress(args, config);
-  const name = walletName(args);
+  const { name, address } = await resolveSigningWallet(args, config);
   const challenge = assertOk(
     await requestJson<{ challenge: { message: string } }>(apiUrl, "/api/auth/challenge", {
       method: "POST",
@@ -141,8 +165,7 @@ export async function callCommand(args: ParsedArgs) {
   const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
   const token = config.sessions[apiUrl];
-  const walletAddress = await knownWalletAddress(args, config);
-  const name = walletName(args);
+  const { name, address: walletAddress } = await resolveSigningWallet(args, config);
   const path = buildProxyPath(routeId, query, provider);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
