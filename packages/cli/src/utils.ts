@@ -83,9 +83,15 @@ export function buildProxyPath(routeId: string, query?: Record<string, unknown>,
   }
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      searchParams.set(key, String(value));
+    // Reject anything we can't faithfully serialize as a single URL query value.
+    // Silently dropping arrays/objects/null would send the request with missing
+    // filters and return unintended results.
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+      throw new Error(
+        `--query value for "${key}" must be a string, number, or boolean; arrays, objects, and null are not supported. Use --json for structured request bodies.`
+      );
     }
+    searchParams.set(key, String(value));
   }
   const queryString = searchParams.toString();
   return queryString ? `${path}?${queryString}` : path;

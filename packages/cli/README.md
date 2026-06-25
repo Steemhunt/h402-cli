@@ -47,7 +47,7 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | `--wallet 0x...` | all | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
 | `--api-url <url>` | all | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`) |
 | `--json '{...}'` | quote, call | Request body (sets method to POST) |
-| `--query '{...}'` | quote, call | URL query params (GET) |
+| `--query '{...}'` | quote, call | URL query params (GET); values must be strings/numbers/booleans |
 | `--provider <name>` | quote, call | Pin a provider; default is `auto` (h402 picks the best) |
 | `--method GET\|POST` | quote, call | Override the method (inferred from `--json` otherwise) |
 | `--passphrase <s>` | create, auth, call | Signing passphrase (or `H402_WALLET_PASSPHRASE`) |
@@ -56,7 +56,7 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | `--idempotency-key <uuid>` | call | Stable key for safe retries (default: random) |
 | `--limit <n>` | search | Max results (default `20`) |
 
-Route ids are `category/action`, e.g. `web/search`, `maps/place-details`, `finance/stock-quote`.
+Route ids are `category/action`, e.g. `web/search`, `maps/place-details`, `finance/stock-quote`. `--query` takes one scalar value per key (string, number, or boolean); pass arrays, nested objects, or request bodies with `--json` instead.
 
 ## How a paid call works
 
