@@ -95,6 +95,22 @@ describe("loadConfig / saveConfig", () => {
     await expect(loadConfig()).rejects.toThrow(/not a valid config object/);
   });
 
+  it("normalizes a sparse or mistyped config object so commands don't crash later", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    // Empty object: every field defaults.
+    await writeFile(configFile, "{}");
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+    // Mistyped sessions/wallets and backendUrl fall back to safe defaults.
+    await writeFile(configFile, JSON.stringify({ backendUrl: 5, sessions: "nope", wallets: [] }));
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+  });
+
+  it("keeps valid sessions/wallets while defaulting a missing field", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    await writeFile(configFile, JSON.stringify({ wallets: { h402: { address: "0xabc" } } }));
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: { h402: { address: "0xabc" } } });
+  });
+
   it.skipIf(process.platform === "win32")("writes config and directory with private permissions", async () => {
     await saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
     expect((await stat(configFile)).mode & 0o777).toBe(0o600);

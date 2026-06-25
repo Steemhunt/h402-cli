@@ -45,7 +45,20 @@ export async function loadConfig(): Promise<CliConfig> {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`h402 config at ${file} is not a valid config object. Fix or remove it (it holds your session tokens and known wallets).`);
   }
-  return parsed as CliConfig;
+  // Normalize to the CliConfig shape so a sparse or partial file (e.g. `{}` or a
+  // missing/mistyped sessions/wallets key) yields a usable config instead of
+  // crashing later when a command reads config.sessions / config.wallets.
+  const config = parsed as Record<string, unknown>;
+  const defaults = defaultConfig();
+  return {
+    backendUrl: typeof config.backendUrl === "string" ? config.backendUrl : defaults.backendUrl,
+    sessions: isPlainObject(config.sessions) ? (config.sessions as Record<string, string>) : {},
+    wallets: isPlainObject(config.wallets) ? (config.wallets as CliConfig["wallets"]) : {}
+  };
+}
+
+function isPlainObject(value: unknown): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export async function saveConfig(config: CliConfig) {
