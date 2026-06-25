@@ -37,7 +37,7 @@ h402 call web/search --name agent --no-passphrase --json '{"query":"agent paymen
 
 The CLI targets the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` only when pointing at another backend such as local dev.
 
-The CLI signs through the [Open Wallet Standard](https://github.com/open-wallet-standard) (`ows`) binary — install it and keep `ows` on your `PATH`.
+The CLI signs locally through the [Open Wallet Standard](https://github.com/open-wallet-standard) and bundles the `ows` wallet binary, so a global install is self-contained — no separate wallet install needed. Override it with `H402_OWS_BIN` to use your own build.
 
 ## How it works
 

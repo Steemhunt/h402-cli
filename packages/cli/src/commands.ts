@@ -79,13 +79,22 @@ export async function walletCommand(args: ParsedArgs) {
   }
 
   if (subcommand === "balance") {
-    const output = await runOwsCli(["fund", "balance", "--wallet", name, "--chain", "base"]);
-    process.stdout.write(`${output}\n`);
+    // OWS keys wallets by name; resolve --name/--wallet to the owning wallet so
+    // `--wallet 0x...` selects the same wallet here as it does for signing.
+    const { name: signingName, address } = await resolveSigningWallet(args, config);
+    // OWS prints a human balance table; wrap it in a stable JSON envelope so the
+    // agent-facing JSON-stdout contract holds (the raw text is preserved as-is —
+    // parsing the human table into numbers would be fragile for a money tool).
+    const raw = await runOwsCli(["fund", "balance", "--wallet", signingName, "--chain", "base"]);
+    printJson({ wallet: { name: signingName, address }, chain: "base", balance: { raw } });
     return;
   }
 
   if (subcommand === "fund") {
-    const output = await runOwsCli(["fund", "deposit", "--wallet", name, "--chain", "8453", "--token", "USDC"]);
+    // `ows fund deposit` opens an interactive MoonPay deposit flow, so this is a
+    // human/passthrough command (documented as such) — not part of the JSON contract.
+    const { name: signingName } = await resolveSigningWallet(args, config);
+    const output = await runOwsCli(["fund", "deposit", "--wallet", signingName, "--chain", "8453", "--token", "USDC"]);
     process.stdout.write(`${output}\n`);
     return;
   }
