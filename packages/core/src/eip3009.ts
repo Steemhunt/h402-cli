@@ -42,17 +42,26 @@ export function buildTransferAuthorization(input: {
   };
 }
 
+// EIP-3009 (transferWithAuthorization) is the only method this toolkit can sign.
+// An absent method is the legacy/default EIP-3009 shape; any other explicit value
+// (native, permit2, ...) is unsupported and must not be signed.
+function isEip3009Method(method: unknown): boolean {
+  return method === undefined || method === "eip3009";
+}
+
 /**
  * Select a supported `exact` payment requirement from an x402 challenge.
- * `matchAsset` / `rejectNativeTransfer` let the server pin Base USDC while the
- * CLI accepts any exact requirement on the network.
+ * `matchAsset` / `requireEip3009` let a caller pin Base USDC EIP-3009 while the
+ * default accepts any exact requirement on the network.
  */
 export function selectExactRequirement(
   paymentRequired: X402PaymentRequired,
   options: {
     network?: X402Network;
-    matchAsset?: (asset: string) => boolean;
-    rejectNativeTransfer?: boolean;
+    // `asset` is typed unknown so a malformed challenge entry (non-string asset)
+    // returns a clean "no match" instead of throwing and aborting the scan.
+    matchAsset?: (asset: unknown) => boolean;
+    requireEip3009?: boolean;
   } = {}
 ): X402PaymentRequirements {
   const network = options.network ?? BASE_NETWORK;
@@ -61,10 +70,10 @@ export function selectExactRequirement(
       candidate.scheme === "exact" &&
       candidate.network === network &&
       (!options.matchAsset || options.matchAsset(candidate.asset)) &&
-      (!options.rejectNativeTransfer || candidate.extra?.assetTransferMethod !== "native")
+      (!options.requireEip3009 || isEip3009Method(candidate.extra?.assetTransferMethod))
   );
   if (!accepted) {
-    throw new Error("No supported Base USDC exact x402 payment requirement was returned");
+    throw new Error("No supported payment requirement in the x402 challenge: h402 only signs Base USDC EIP-3009 `exact` payments.");
   }
   return accepted;
 }
