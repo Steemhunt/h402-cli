@@ -39,6 +39,8 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | `h402 quote <category/action>` | Preview the x402 `PAYMENT-REQUIRED` envelope without paying |
 | `h402 call <category/action>` | Execute a paid proxy call (signs + retries on 402) |
 
+Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help` for usage and flags, and `h402 --version` for the version. Unknown flags and unknown commands fail with a non-zero exit.
+
 ## Flags
 
 | Flag | Applies to | Description |

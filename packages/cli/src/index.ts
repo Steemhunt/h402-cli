@@ -7,34 +7,37 @@ import {
   searchCommand,
   walletCommand
 } from "./commands.js";
-import { parseArgs } from "./utils.js";
+import { assertKnownFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "./help.js";
+import { flagBoolean, parseArgs } from "./utils.js";
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const command = args.positional[0];
 
-  if (!command || command === "help" || command === "--help") {
-    process.stdout.write(`h402 CLI
-
-Commands:
-  wallet create|address|balance|fund
-  auth
-  credits
-  search <query>
-  quote <category/action>
-  call <category/action>
-
-Common flags:
-  --name h402
-  --wallet 0x...
-  --api-url https://h402.hunt.town
-  --json '{"query":"agent APIs"}'
-  --query '{"placeId":"ChIJ..."}'
-  --provider exa
-  --no-passphrase
-`);
+  if (flagBoolean(args.flags, "version") || command === "version") {
+    process.stdout.write(`${getVersion()}\n`);
     return;
   }
+
+  if (!command || command === "help") {
+    process.stdout.write(`${topLevelHelp()}\n`);
+    return;
+  }
+
+  if (!isKnownCommand(command)) {
+    throw new Error(`Unknown command: ${command}. Run: h402 --help`);
+  }
+
+  const commandPath = resolveCommandPath(args.positional);
+
+  if (flagBoolean(args.flags, "help")) {
+    process.stdout.write(`${commandHelp(commandPath)}\n`);
+    return;
+  }
+
+  // Reject typo'd/unsupported flags before doing any work (a silently ignored
+  // --idempotency-key on a paid call could double-charge on retry).
+  assertKnownFlags(commandPath, args.flags);
 
   if (command === "wallet") return walletCommand(args);
   if (command === "auth") return authCommand(args);
@@ -43,7 +46,7 @@ Common flags:
   if (command === "quote") return quoteCommand(args);
   if (command === "call") return callCommand(args);
 
-  throw new Error(`Unknown command: ${command}`);
+  throw new Error(`Unknown command: ${command}. Run: h402 --help`);
 }
 
 main()
