@@ -57,13 +57,16 @@ Node 22+. ESM throughout.
 
 ## Releasing
 
-Before publishing, verify each package tarball will ship its compiled `dist`:
+**Publish `@h402/core` before `@h402/cli`.** `@h402/cli` depends on `@h402/core` as a registry dependency, so core must be available on npm first or a clean `npm install -g @h402/cli` will fail to resolve it.
+
+Before publishing, verify and smoke-test the packed artifacts:
 
 ```bash
-npm run verify:pack
+npm run verify:pack   # each tarball ships its compiled dist
+npm run smoke:pack    # pack core+cli, install both into a clean project, run `h402 --help`
 ```
 
-Each package's `prepack` builds `dist` automatically on `npm pack` / `npm publish`; `verify:pack` asserts the tarball contents so a clean checkout can never publish a package without its JS/types.
+Each package's `prepack` builds `dist` automatically on `npm pack` / `npm publish`; `verify:pack` asserts the tarball contents so a clean checkout can never publish a package without its JS/types. `smoke:pack` goes further — it installs the packed core + cli into a throwaway prefix and runs the CLI, catching breakage in the documented global-install path (an unresolvable `@h402/core`, a missing OWS binary) that an in-repo build would hide. Both run in CI.
 
 ## License
 

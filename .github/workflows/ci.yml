@@ -19,3 +19,6 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # Gate on the documented global-install path: pack core+cli and run the
+      # CLI from a clean tarball install, not just the workspace build.
+      - run: npm run smoke:pack
