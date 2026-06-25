@@ -127,9 +127,10 @@ export async function authCommand(args: ParsedArgs) {
 }
 
 export async function searchCommand(args: ParsedArgs) {
+  // Validate the required query before any network work.
+  const query = requireValue(args.positional.slice(1).join(" ").trim() || undefined, 'search query is required (e.g. h402 search "web search")');
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
-  const query = args.positional.slice(1).join(" ");
   const result = assertOk(
     await requestJson(apiUrl, `/api/catalog/search?q=${encodeURIComponent(query)}&limit=${flagString(args.flags, "limit", "20")}`)
   );
