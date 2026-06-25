@@ -31,6 +31,12 @@ describe("buildProxyPath", () => {
   it("rejects malformed route ids", () => {
     expect(() => buildProxyPath("web/search/exa")).toThrow("Route id must look like");
   });
+
+  it("rejects array, object, and null query values instead of silently dropping them", () => {
+    expect(() => buildProxyPath("crypto/holders", { ids: [1, 2, 3] })).toThrow(/"ids" must be a string, number, or boolean/);
+    expect(() => buildProxyPath("crypto/holders", { filter: { chain: "base" } })).toThrow(/"filter"/);
+    expect(() => buildProxyPath("crypto/holders", { cursor: null })).toThrow(/"cursor"/);
+  });
 });
 
 describe("parseQueryFlag", () => {
