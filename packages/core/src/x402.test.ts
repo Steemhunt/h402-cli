@@ -57,12 +57,21 @@ describe("selectExactRequirement", () => {
     expect(() => selectExactRequirement(paymentRequired, { matchAsset: () => false })).toThrow();
   });
 
-  it("rejects native transfers when asked", () => {
-    const native: X402PaymentRequired = {
-      x402Version: 2,
-      accepts: [{ ...baseRequirement, extra: { assetTransferMethod: "native" } }]
-    };
-    expect(() => selectExactRequirement(native, { rejectNativeTransfer: true })).toThrow();
+  it("requireEip3009 rejects native, permit2, and other explicit non-eip3009 methods", () => {
+    for (const assetTransferMethod of ["native", "permit2", "other"]) {
+      const challenge: X402PaymentRequired = { x402Version: 2, accepts: [{ ...baseRequirement, extra: { assetTransferMethod } }] };
+      expect(() => selectExactRequirement(challenge, { requireEip3009: true })).toThrow();
+    }
+  });
+
+  it("requireEip3009 accepts an explicit eip3009 method, an absent method, and scans past unsupported entries", () => {
+    const eip3009 = { ...baseRequirement, extra: { assetTransferMethod: "eip3009" } };
+    expect(selectExactRequirement({ x402Version: 2, accepts: [eip3009] }, { requireEip3009: true })).toEqual(eip3009);
+    // An absent method is the default EIP-3009 shape.
+    expect(selectExactRequirement(paymentRequired, { requireEip3009: true })).toEqual(baseRequirement);
+    // A permit2 entry is skipped in favor of a later valid eip3009 entry.
+    const permit2 = { ...baseRequirement, extra: { assetTransferMethod: "permit2" } };
+    expect(selectExactRequirement({ x402Version: 2, accepts: [permit2, eip3009] }, { requireEip3009: true })).toEqual(eip3009);
   });
 });
 

@@ -15,11 +15,13 @@ import { signOwsTypedData } from "./ows.js";
 export { X402_HEADERS, paymentRequiredFromResponse, type X402PaymentRequired } from "@h402/core";
 
 // The CLI can only sign EIP-3009 Base USDC `exact` payments, so it must refuse to
-// sign anything else a backend offers — a non-USDC asset or a native transfer
-// would move funds the user never agreed to. Pin the selection to Base USDC.
+// sign anything else a backend offers — a non-USDC asset or a non-EIP-3009
+// transfer method (native, permit2, ...) would move funds in a way the user never
+// agreed to. The asset matcher is defensive: a malformed (non-string) asset is a
+// clean non-match, not a thrown error that would abort scanning valid entries.
 export const BASE_USDC_REQUIREMENT_OPTIONS = {
-  matchAsset: (asset: string) => asset.toLowerCase() === BASE_USDC_ADDRESS,
-  rejectNativeTransfer: true
+  matchAsset: (asset: unknown) => typeof asset === "string" && asset.toLowerCase() === BASE_USDC_ADDRESS,
+  requireEip3009: true
 } as const;
 
 export async function createPaymentSignatureHeader(input: {

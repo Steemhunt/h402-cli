@@ -38,16 +38,31 @@ describe("BASE_USDC_REQUIREMENT_OPTIONS", () => {
     ).toThrow(/only signs Base USDC/);
   });
 
-  it("rejects a native transfer on the USDC asset", () => {
-    expect(() =>
-      selectExactRequirement(challenge({ ...usdcRequirement, extra: { assetTransferMethod: "native" } }), BASE_USDC_REQUIREMENT_OPTIONS)
-    ).toThrow(/only signs Base USDC/);
+  it("rejects non-eip3009 transfer methods on the USDC asset (native, permit2)", () => {
+    for (const assetTransferMethod of ["native", "permit2"]) {
+      expect(() =>
+        selectExactRequirement(challenge({ ...usdcRequirement, extra: { assetTransferMethod } }), BASE_USDC_REQUIREMENT_OPTIONS)
+      ).toThrow(/only signs Base USDC/);
+    }
+  });
+
+  it("accepts an explicit eip3009 method", () => {
+    const accepted = selectExactRequirement(challenge({ ...usdcRequirement, extra: { assetTransferMethod: "eip3009" } }), BASE_USDC_REQUIREMENT_OPTIONS);
+    expect(accepted.asset).toBe(BASE_USDC_ADDRESS);
   });
 
   it("rejects a requirement on the wrong network", () => {
     expect(() =>
       selectExactRequirement(challenge({ ...usdcRequirement, network: "eip155:1" }), BASE_USDC_REQUIREMENT_OPTIONS)
     ).toThrow(/only signs Base USDC/);
+  });
+
+  it("ignores a malformed (non-string) asset entry and still selects the valid USDC one", () => {
+    const accepted = selectExactRequirement(
+      { x402Version: 2, accepts: [{ ...usdcRequirement, asset: null }, usdcRequirement] } as unknown as X402PaymentRequired,
+      BASE_USDC_REQUIREMENT_OPTIONS
+    );
+    expect(accepted.asset).toBe(BASE_USDC_ADDRESS);
   });
 });
 
