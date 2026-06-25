@@ -13,7 +13,7 @@ Building an AI agent? See [`SKILL.md`](../../SKILL.md) for an agent-ready walkth
 npm install -g @h402/cli
 ```
 
-> **Requires the OWS wallet binary.** The CLI signs through the [Open Wallet Standard](https://github.com/open-wallet-standard) CLI. Install it and ensure `ows` is on your `PATH` (or set `H402_OWS_BIN`).
+> The `ows` wallet binary ([Open Wallet Standard](https://github.com/open-wallet-standard)) ships with the CLI, so a global install is self-contained. To use your own build instead, set `H402_OWS_BIN=/absolute/path/to/ows`.
 
 ## Quickstart
 
@@ -90,7 +90,7 @@ h402 call crypto/token-holders --name agent \
 | Variable | Purpose |
 | --- | --- |
 | `H402_API_URL` | Backend base URL override (or `--api-url`; default `https://h402.hunt.town`) |
-| `H402_OWS_BIN` | Path to the OWS binary (default `ows`) |
+| `H402_OWS_BIN` | Path to the OWS binary (defaults to the copy bundled with the CLI, then `ows` on `PATH`) |
 | `H402_WALLET_PASSPHRASE` | Non-interactive passphrase for signing |
 
 Passphrases are never stored. Use `--no-passphrase` only for disposable test wallets. The CLI persists only the backend URL, session tokens, and known wallet addresses in `~/.h402/config.json`.
