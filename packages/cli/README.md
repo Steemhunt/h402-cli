@@ -90,7 +90,7 @@ h402 call crypto/token-holders --name agent \
 | Variable | Purpose |
 | --- | --- |
 | `H402_API_URL` | Backend base URL override (or `--api-url`; default `https://h402.hunt.town`) |
-| `H402_OWS_BIN` | Path to the OWS binary (defaults to the copy bundled with the CLI, then `ows` on `PATH`) |
+| `H402_OWS_BIN` | Absolute path to an `ows` binary, overriding the copy bundled with the CLI |
 | `H402_WALLET_PASSPHRASE` | Non-interactive passphrase for signing |
 
 Passphrases are never stored. Use `--no-passphrase` only for disposable test wallets. The CLI persists only the backend URL, session tokens, and known wallet addresses in `~/.h402/config.json`.

@@ -74,8 +74,12 @@ function bundledOwsBinary(): string | null {
 }
 
 // Resolve how to invoke OWS: an explicit H402_OWS_BIN wins; otherwise prefer the
-// bundled binary (run with the current Node so the `#!/usr/bin/env node` shim is
-// not needed on PATH); finally fall back to bare `ows` on PATH.
+// bundled wrapper (run with the current Node so the `#!/usr/bin/env node` shim is
+// not needed on PATH); fall back to bare `ows` on PATH only when the bundled
+// wrapper file is absent. Note: the bundled wrapper resolves its own native
+// binary at run time, so if that platform binary is missing (e.g. an
+// `--omit=optional` install) the wrapper errors rather than falling back — set
+// H402_OWS_BIN to a working `ows` in that case.
 export function resolveOwsInvocation(): { command: string; prefixArgs: string[] } {
   const override = process.env.H402_OWS_BIN;
   if (override) {
@@ -107,8 +111,8 @@ export function runOwsCli(args: string[]) {
       const code = (error as NodeJS.ErrnoException).code;
       reject(
         new Error(
-          `Could not run the OWS wallet binary${code ? ` (${code})` : ""}. h402 uses the 'ows' binary bundled with ` +
-            "@open-wallet-standard/core, then 'ows' on PATH. Install OWS or set H402_OWS_BIN to its absolute path."
+          `Could not run the OWS wallet binary${code ? ` (${code})` : ""}. Set H402_OWS_BIN to an absolute 'ows' path, ` +
+            "or reinstall @h402/cli so its bundled OWS binary is available (e.g. without --omit=optional)."
         )
       );
     });
