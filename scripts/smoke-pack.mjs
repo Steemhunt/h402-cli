@@ -4,8 +4,9 @@
 //
 // `verify-pack.mjs` checks tarball *contents*; this checks that the packed
 // artifacts actually install and execute from outside the workspace — catching
-// breakage the in-repo build hides (an unresolvable @h402/core, a missing OWS
-// binary, a bad bin shebang), which is exactly the documented global-install path.
+// breakage the in-repo build hides (an unresolvable @h402/core, a bad bin
+// shebang/entrypoint), which is exactly the documented global-install path. It
+// runs only `h402 --help`, so it does not exercise OWS-binary resolution.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

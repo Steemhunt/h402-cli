@@ -66,7 +66,7 @@ npm run verify:pack   # each tarball ships its compiled dist
 npm run smoke:pack    # pack core+cli, install both into a clean project, run `h402 --help`
 ```
 
-Each package's `prepack` builds `dist` automatically on `npm pack` / `npm publish`; `verify:pack` asserts the tarball contents so a clean checkout can never publish a package without its JS/types. `smoke:pack` goes further — it installs the packed core + cli into a throwaway prefix and runs the CLI, catching breakage in the documented global-install path (an unresolvable `@h402/core`, a missing OWS binary) that an in-repo build would hide. Both run in CI.
+Each package's `prepack` builds `dist` automatically on `npm pack` / `npm publish`; `verify:pack` asserts the tarball contents so a clean checkout can never publish a package without its JS/types. `smoke:pack` goes further — it installs the packed core + cli into a throwaway prefix and runs `h402 --help`, catching install/entrypoint breakage (an unresolvable `@h402/core`, a broken bin) that an in-repo build would hide. (It runs only `--help`, so it does not cover OWS-binary resolution.) Both run in CI.
 
 ## License
 
