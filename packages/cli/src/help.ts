@@ -175,17 +175,51 @@ export function commandHelp(commandPath: string[]): string {
   return lines.join("\n");
 }
 
-// Reject flags the resolved command doesn't accept, so a typo (e.g.
-// --idempotency-ky on a paid call) fails loudly instead of being ignored.
+function unknownFlagsError(names: string[], helpCommand: string): Error {
+  const label = names.length > 1 ? "Unknown flags" : "Unknown flag";
+  return new Error(`${label}: ${names.map((name) => `--${name}`).join(", ")}. Run: ${helpCommand}`);
+}
+
+// Reject flags the resolved command doesn't accept (so a typo like
+// --idempotency-ky fails loudly), and validate value shape: a value flag must
+// carry a value, a boolean flag must not. A bare value flag parses to boolean
+// `true`, which flagString() silently treats as unset — e.g. `--idempotency-key`
+// with no value would fall back to a random key, making a paid retry unsafe.
 export function assertKnownFlags(commandPath: string[], flags: Record<string, string | boolean>): void {
   const spec = specFor(commandPath);
   if (!spec) {
     return; // Unknown command/subcommand: the command handler reports it.
   }
-  const allowed = new Set<string>(["help", ...spec.flags.map((flag) => flag.name)]);
-  const unknown = Object.keys(flags).filter((key) => !allowed.has(key));
+  // Flag name -> whether it requires a value (--help is an always-allowed boolean).
+  const valueFlags = new Map<string, boolean>([["help", false]]);
+  for (const flag of spec.flags) {
+    valueFlags.set(flag.name, flag.value !== undefined);
+  }
+
+  const unknown = Object.keys(flags).filter((key) => !valueFlags.has(key));
   if (unknown.length > 0) {
-    const label = unknown.length > 1 ? "Unknown flags" : "Unknown flag";
-    throw new Error(`${label}: ${unknown.map((flag) => `--${flag}`).join(", ")}. Run: h402 ${commandPath.join(" ")} --help`);
+    throw unknownFlagsError(unknown, `h402 ${commandPath.join(" ")} --help`);
+  }
+
+  for (const [name, provided] of Object.entries(flags)) {
+    const requiresValue = valueFlags.get(name);
+    if (requiresValue && typeof provided !== "string") {
+      throw new Error(`Flag --${name} requires a value. Run: h402 ${commandPath.join(" ")} --help`);
+    }
+    // A boolean flag that captured a following token (e.g. `--no-passphrase web/search`,
+    // where the parser greedily consumed the route id) is a mistake; "true" stays
+    // valid since flagBoolean() accepts it.
+    if (requiresValue === false && typeof provided === "string" && provided !== "true") {
+      throw new Error(`Flag --${name} does not take a value (got "${provided}"). Run: h402 ${commandPath.join(" ")} --help`);
+    }
+  }
+}
+
+// Without a command, only --help and --version are valid; reject anything else
+// (e.g. a typo'd --versoin) instead of silently printing help and exiting 0.
+export function assertTopLevelFlags(flags: Record<string, string | boolean>): void {
+  const stray = Object.keys(flags).filter((flag) => flag !== "help" && flag !== "version");
+  if (stray.length > 0) {
+    throw unknownFlagsError(stray, "h402 --help");
   }
 }

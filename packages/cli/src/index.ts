@@ -7,7 +7,7 @@ import {
   searchCommand,
   walletCommand
 } from "./commands.js";
-import { assertKnownFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "./help.js";
+import { assertKnownFlags, assertTopLevelFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "./help.js";
 import { flagBoolean, parseArgs } from "./utils.js";
 
 async function main() {
@@ -20,6 +20,7 @@ async function main() {
   }
 
   if (!command || command === "help") {
+    assertTopLevelFlags(args.flags);
     process.stdout.write(`${topLevelHelp()}\n`);
     return;
   }
