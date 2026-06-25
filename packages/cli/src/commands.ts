@@ -151,8 +151,13 @@ export async function quoteCommand(args: ParsedArgs) {
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const paymentRequired = paymentRequiredFromResponse(result.headers, result.body);
-
-  printJson(paymentRequired ? { paymentRequired } : result.body);
+  if (paymentRequired) {
+    printJson({ paymentRequired });
+    return;
+  }
+  // No challenge: a free route returns its result with a 2xx. Any non-2xx
+  // (404/500/...) is a real error and must exit non-zero, not print as a result.
+  printJson(assertOk(result));
 }
 
 export async function callCommand(args: ParsedArgs) {
@@ -181,14 +186,12 @@ export async function callCommand(args: ParsedArgs) {
     body: body === undefined ? undefined : JSON.stringify(body)
   });
 
-  if (first.status !== 402) {
-    printJson(first.body);
-    return;
-  }
-
-  const paymentRequired = paymentRequiredFromResponse(first.headers, first.body);
+  const paymentRequired = first.status === 402 ? paymentRequiredFromResponse(first.headers, first.body) : null;
   if (!paymentRequired) {
-    printJson(first.body);
+    // A 2xx means the route answered without payment (free, or covered by credit).
+    // A non-2xx first response (incl. an unparseable 402) is a real error: assertOk
+    // exits non-zero instead of printing the error body as a successful result.
+    printJson(assertOk(first));
     return;
   }
 
