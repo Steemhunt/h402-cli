@@ -1,5 +1,8 @@
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { backendUrl, type CliConfig } from "../src/config";
+import { backendUrl, loadConfig, saveConfig, type CliConfig } from "../src/config";
 
 const PROD_URL = "https://h402.hunt.town";
 
@@ -42,5 +45,75 @@ describe("backendUrl resolution", () => {
 
   it("strips a trailing slash from the resolved URL", () => {
     expect(backendUrl(configWith(undefined), "https://h402.hunt.town/")).toBe(PROD_URL);
+  });
+});
+
+// loadConfig/saveConfig read ~/.h402/config.json via os.homedir(); redirect HOME
+// to a throwaway dir so these never touch the developer's real config.
+describe("loadConfig / saveConfig", () => {
+  const savedHome = process.env.HOME;
+  const savedApiUrl = process.env.H402_API_URL;
+  let home: string;
+  let configFile: string;
+
+  beforeEach(async () => {
+    home = await mkdtemp(path.join(os.tmpdir(), "h402-cfg-"));
+    process.env.HOME = home;
+    delete process.env.H402_API_URL;
+    configFile = path.join(home, ".h402", "config.json");
+  });
+
+  afterEach(async () => {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedApiUrl === undefined) delete process.env.H402_API_URL;
+    else process.env.H402_API_URL = savedApiUrl;
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it("returns defaults when no config file exists (first run)", async () => {
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+  });
+
+  it("round-trips a saved config", async () => {
+    const config: CliConfig = { backendUrl: "https://staging.example", sessions: { "https://staging.example": "tok" }, wallets: { h402: { address: "0xabc" } } };
+    await saveConfig(config);
+    await expect(loadConfig()).resolves.toEqual(config);
+  });
+
+  it("throws on malformed JSON and does not overwrite it", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    await writeFile(configFile, "{ not valid json");
+    await expect(loadConfig()).rejects.toThrow(/not a valid config object/);
+    // The malformed file must be left intact, not silently reset.
+    expect(await readFile(configFile, "utf8")).toBe("{ not valid json");
+  });
+
+  it("throws on a non-object config (valid JSON, wrong shape)", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    await writeFile(configFile, "[1, 2, 3]");
+    await expect(loadConfig()).rejects.toThrow(/not a valid config object/);
+  });
+
+  it("normalizes a sparse or mistyped config object so commands don't crash later", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    // Empty object: every field defaults.
+    await writeFile(configFile, "{}");
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+    // Mistyped sessions/wallets and backendUrl fall back to safe defaults.
+    await writeFile(configFile, JSON.stringify({ backendUrl: 5, sessions: "nope", wallets: [] }));
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+  });
+
+  it("keeps valid sessions/wallets while defaulting a missing field", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    await writeFile(configFile, JSON.stringify({ wallets: { h402: { address: "0xabc" } } }));
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: { h402: { address: "0xabc" } } });
+  });
+
+  it.skipIf(process.platform === "win32")("writes config and directory with private permissions", async () => {
+    await saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+    expect((await stat(configFile)).mode & 0o777).toBe(0o600);
+    expect((await stat(path.dirname(configFile))).mode & 0o777).toBe(0o700);
   });
 });
