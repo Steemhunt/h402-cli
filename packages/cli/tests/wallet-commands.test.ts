@@ -54,6 +54,17 @@ describe("walletCommand balance/fund wallet selection", () => {
     expect(runOwsCli).toHaveBeenCalledWith(["fund", "balance", "--wallet", "agent", "--chain", "base"]);
   });
 
+  it("wraps raw OWS balance output in a stable JSON envelope", async () => {
+    runOwsCli.mockResolvedValueOnce("   10.273934 USDC   $10.27       USDC");
+    await walletCommand(args({ name: "agent" }, "balance"));
+    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(JSON.parse(written)).toEqual({
+      wallet: { name: "agent", address: ADDR_AGENT },
+      chain: "base",
+      balance: { raw: "   10.273934 USDC   $10.27       USDC" }
+    });
+  });
+
   it("resolves --wallet to the owning wallet name for OWS (fund)", async () => {
     await walletCommand(args({ wallet: ADDR_AGENT }, "fund"));
     expect(runOwsCli).toHaveBeenCalledWith(["fund", "deposit", "--wallet", "agent", "--chain", "8453", "--token", "USDC"]);

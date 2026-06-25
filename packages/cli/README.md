@@ -31,8 +31,8 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | --- | --- |
 | `h402 wallet create --name <n>` | Create a local OWS wallet (prints its address) |
 | `h402 wallet address --name <n>` | Print the wallet address |
-| `h402 wallet balance --name <n>` | Show the wallet's Base USDC balance |
-| `h402 wallet fund --name <n>` | Open the OWS deposit flow to fund the wallet |
+| `h402 wallet balance --name <n>` | Show the wallet's Base USDC balance (JSON envelope) |
+| `h402 wallet fund --name <n>` | Open the interactive OWS deposit flow (human, not JSON) |
 | `h402 auth --name <n>` | Sign in to a backend with a wallet signature (enables bonus credits) |
 | `h402 credits` | Show the bonus-credit balance for the signed-in session |
 | `h402 search <query>` | Search the catalog (JSON results) |
@@ -75,7 +75,7 @@ before USDC unless you pass `--no-credit`.
 
 ## Agents & automation
 
-Everything is non-interactive and JSON-first:
+Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`address`/`balance`. The only exception is `wallet fund`, which opens an interactive deposit flow.
 
 ```bash
 export H402_WALLET_PASSPHRASE=...                 # or use --no-passphrase

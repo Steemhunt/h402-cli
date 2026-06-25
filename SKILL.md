@@ -66,7 +66,7 @@ h402 call crypto/token-holders --name agent --no-passphrase \
 - A route id is `category/action` (e.g. `web/search`, `maps/place-details`, `finance/stock-quote`).
 - `--json '{...}'` is the request body; use `--query '{...}'` for GET query params instead.
 - h402 auto-routes to the best provider. Pin one with `--provider <name>` for determinism.
-- Every command prints **JSON to stdout**; failures print to stderr and exit non-zero.
+- Every command prints **JSON to stdout** (including `wallet balance`); failures print to stderr and exit non-zero. The one exception is `wallet fund`, which opens an interactive deposit flow.
 
 ## How payment works (per call, non-custodial)
 
