@@ -64,7 +64,7 @@ export function selectExactRequirement(
       (!options.rejectNativeTransfer || candidate.extra?.assetTransferMethod !== "native")
   );
   if (!accepted) {
-    throw new Error("No supported Base USDC exact x402 payment requirement was returned");
+    throw new Error("No supported payment requirement in the x402 challenge: h402 only signs Base USDC EIP-3009 `exact` payments.");
   }
   return accepted;
 }

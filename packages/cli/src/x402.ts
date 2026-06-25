@@ -1,5 +1,6 @@
 import {
   BASE_CHAIN_ID,
+  BASE_USDC_ADDRESS,
   USDC_EIP712_NAME,
   USDC_EIP712_VERSION,
   X402_VERSION,
@@ -13,13 +14,21 @@ import { signOwsTypedData } from "./ows.js";
 
 export { X402_HEADERS, paymentRequiredFromResponse, type X402PaymentRequired } from "@h402/core";
 
+// The CLI can only sign EIP-3009 Base USDC `exact` payments, so it must refuse to
+// sign anything else a backend offers — a non-USDC asset or a native transfer
+// would move funds the user never agreed to. Pin the selection to Base USDC.
+export const BASE_USDC_REQUIREMENT_OPTIONS = {
+  matchAsset: (asset: string) => asset.toLowerCase() === BASE_USDC_ADDRESS,
+  rejectNativeTransfer: true
+} as const;
+
 export async function createPaymentSignatureHeader(input: {
   paymentRequired: X402PaymentRequired;
   walletAddress: string;
   walletName: string;
   passphrase?: string;
 }) {
-  const accepted = selectExactRequirement(input.paymentRequired);
+  const accepted = selectExactRequirement(input.paymentRequired, BASE_USDC_REQUIREMENT_OPTIONS);
   const authorization = buildTransferAuthorization({
     from: input.walletAddress as `0x${string}`,
     to: accepted.payTo as `0x${string}`,
