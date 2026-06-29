@@ -1,3 +1,5 @@
+import { CliError } from "./errors.js";
+
 export type ApiResponse<T> = {
   status: number;
   statusText: string;
@@ -38,21 +40,40 @@ export async function requestJson<T>(
   return { status: response.status, statusText: response.statusText, body, headers: response.headers };
 }
 
-export function assertOk<T>(response: ApiResponse<T>) {
+// Pull a human-readable message out of a backend error body — covering the common
+// { error: { message } }, { error: "..." }, and { message } shapes — so the stderr
+// envelope's `message` is useful even before a caller inspects `detail`.
+function backendMessage(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") {
+    return undefined;
+  }
+  const record = body as Record<string, unknown>;
+  const error = record.error;
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object" && typeof (error as Record<string, unknown>).message === "string") {
+    return (error as Record<string, unknown>).message as string;
+  }
+  return typeof record.message === "string" ? record.message : undefined;
+}
+
+export function assertOk<T>(response: ApiResponse<T>): T {
   if (response.status < 200 || response.status >= 300) {
     const { body } = response;
     const statusLine = `${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
-    // An empty body (a framework 405, an infra 502/504) would otherwise stringify to the
-    // useless literal "null"; surface the HTTP status so the failure is diagnosable.
+    // Empty body (a framework 405, an infra 502/504): status only — never the literal "null".
     if (body === null || body === undefined || body === "") {
-      throw new Error(`Request failed: ${statusLine}`);
+      throw new CliError(`Request failed: ${statusLine}`);
     }
-    // A non-JSON string body is shown verbatim; a structured JSON error keeps its full
-    // shape so callers can still read its code/message.
+    // Non-JSON string body (an HTML 502 page, a plain-text gateway error): show it verbatim.
     if (typeof body === "string") {
-      throw new Error(`Request failed: ${statusLine}: ${body}`);
+      throw new CliError(`Request failed: ${statusLine}: ${body}`);
     }
-    throw new Error(JSON.stringify(body, null, 2));
+    // Structured JSON error: summarize its message, and carry the full body as `detail`
+    // so the stderr error envelope stays machine-readable.
+    const message = backendMessage(body);
+    throw new CliError(message ? `Request failed: ${statusLine}: ${message}` : `Request failed: ${statusLine}`, body);
   }
   return response.body;
 }

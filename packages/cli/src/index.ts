@@ -7,6 +7,7 @@ import {
   searchCommand,
   walletCommand
 } from "./commands.js";
+import { errorEnvelope } from "./errors.js";
 import { assertKnownFlags, assertTopLevelFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "./help.js";
 import { flagBoolean, parseArgs } from "./utils.js";
 
@@ -55,6 +56,8 @@ main()
     process.exit(0);
   })
   .catch((error) => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    // Every failure exits non-zero with one machine-readable stderr shape:
+    // { "error": { "message", "detail"? } } (see errorEnvelope).
+    process.stderr.write(`${JSON.stringify(errorEnvelope(error), null, 2)}\n`);
     process.exit(1);
   });

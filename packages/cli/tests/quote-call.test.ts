@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CliError, errorEnvelope } from "../src/errors";
 import type { ParsedArgs } from "../src/utils";
 
 const { ADDR } = vi.hoisted(() => ({ ADDR: "0x1111111111111111111111111111111111111111" }));
@@ -76,5 +77,13 @@ describe("quote/call exit codes on backend responses", () => {
   it("quote surfaces the HTTP status, not the literal null, on an empty-body non-2xx", async () => {
     stubFetch(502, undefined);
     await expect(quoteCommand(args("web/search"))).rejects.toThrow(/Request failed: 502/);
+  });
+
+  it("throws a CliError carrying the backend error body so the stderr envelope stays structured", async () => {
+    const backend = { error: { code: "provider_native_field_requires_pinning", message: "pin it" } };
+    stubFetch(422, backend);
+    const error = await callCommand(args("web/search")).catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(CliError);
+    expect(errorEnvelope(error)).toEqual({ error: { message: "Request failed: 422: pin it", detail: backend } });
   });
 });

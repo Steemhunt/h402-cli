@@ -43,7 +43,7 @@ The CLI signs locally through the [Open Wallet Standard](https://github.com/open
 
 You call a task (`category/action`); the proxy answers with an x402 `402 PAYMENT-REQUIRED`; the CLI signs a Base USDC EIP-3009 authorization locally and retries — you pay the exact per-call price and get a canonical JSON response. Keys never leave your machine.
 
-A successful `call` prints `{ "data": <provider result>, "h402": <routing metadata> }`: the upstream provider's JSON is under `data`, and `h402` carries the resolved `provider`, `selectedCandidateId`, `routing`, `paidBy`, and `ledgerEntryId`. Errors print `{ "error": ... }` to stderr with a non-zero exit.
+A successful `call` prints `{ "data": <provider result>, "h402": <routing metadata> }`: the upstream provider's JSON is under `data`, and `h402` carries the resolved `provider`, `selectedCandidateId`, `routing`, `paidBy`, and `ledgerEntryId`. On failure the CLI exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is a human-readable diagnostic, and `detail` carries the backend's JSON error when the request reached the backend.
 
 > `web/search` (and some other routes) accept provider-specific fields such as `limit` only when you pin the owning provider with `--provider`; on the default `auto` route, send just the canonical fields (e.g. `{"query":"..."}`) or auto-routing will reject the request.
 
