@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProxyPath, parseArgs, parseQueryFlag } from "../src/utils";
+import { buildProxyPath, parseArgs, parseQueryFlag, resolveMethod } from "../src/utils";
 
 describe("parseArgs", () => {
   it("parses positional arguments and flags", () => {
@@ -46,5 +46,22 @@ describe("parseQueryFlag", () => {
 
   it("rejects non-object query flags", () => {
     expect(() => parseQueryFlag({ query: "[\"placeId\"]" })).toThrow("--query must be a JSON object");
+  });
+});
+
+describe("resolveMethod", () => {
+  it("defaults to GET without a body and POST with one", () => {
+    expect(resolveMethod({}, false)).toBe("GET");
+    expect(resolveMethod({}, true)).toBe("POST");
+  });
+
+  it("honors and upper-cases an explicit --method", () => {
+    expect(resolveMethod({ method: "GET" }, true)).toBe("GET");
+    expect(resolveMethod({ method: "post" }, false)).toBe("POST");
+  });
+
+  it("rejects an unsupported --method instead of forwarding it", () => {
+    expect(() => resolveMethod({ method: "PUT" }, false)).toThrow(/--method must be GET or POST \(got "PUT"\)/);
+    expect(() => resolveMethod({ method: "delete" }, false)).toThrow(/--method must be GET or POST/);
   });
 });

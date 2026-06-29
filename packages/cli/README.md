@@ -20,7 +20,7 @@ npm install -g @h402/cli
 ```bash
 h402 wallet create --name agent --no-passphrase      # local wallet
 h402 wallet fund --name agent                        # or send Base USDC to the address
-h402 call web/search --name agent --no-passphrase --json '{"query":"agent APIs","limit":5}'
+h402 call web/search --name agent --no-passphrase --json '{"query":"agent APIs"}'
 ```
 
 Calls hit the production backend (`https://h402.hunt.town`) by default — override with `--api-url` or `H402_API_URL` (e.g. `http://localhost:3000` for local dev).
@@ -78,6 +78,10 @@ before USDC unless you pass `--no-credit`.
 ## Agents & automation
 
 Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`address`/`balance`. The only exception is `wallet fund`, which opens an interactive deposit flow.
+
+A successful `call` is wrapped as `{ "data": <provider result>, "h402": <routing metadata> }` — read the upstream provider's payload from `data`; `h402` carries `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), and `ledgerEntryId`. A failed call prints `{ "error": ... }` to stderr and exits non-zero.
+
+Provider-specific fields (e.g. `limit` on `web/search`) are only accepted when you pin that provider with `--provider`; on the default `auto` route, pass just the canonical fields or the request is rejected.
 
 ```bash
 export H402_WALLET_PASSPHRASE=...                 # or use --no-passphrase

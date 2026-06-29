@@ -66,4 +66,15 @@ describe("quote/call exit codes on backend responses", () => {
     await callCommand(args("web/free"));
     expect(stdout).toHaveBeenCalledWith(expect.stringContaining("42"));
   });
+
+  it("call surfaces the HTTP status, not the literal null, on an empty-body non-2xx", async () => {
+    // A framework 405 / infra 502 with no JSON body used to stringify to "null".
+    stubFetch(405, undefined);
+    await expect(callCommand(args("web/search"))).rejects.toThrow(/Request failed: 405/);
+  });
+
+  it("quote surfaces the HTTP status, not the literal null, on an empty-body non-2xx", async () => {
+    stubFetch(502, undefined);
+    await expect(quoteCommand(args("web/search"))).rejects.toThrow(/Request failed: 502/);
+  });
 });

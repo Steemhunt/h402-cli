@@ -40,6 +40,22 @@ export function flagBoolean(flags: Record<string, string | boolean>, name: strin
   return flags[name] === true || flags[name] === "true";
 }
 
+// Resolve the HTTP method for a proxy call. An explicit --method must be GET or POST
+// (case-insensitive, normalized to upper); anything else is rejected here instead of
+// being forwarded as an invalid method the backend answers with an opaque error.
+// Without --method, default to POST when there is a request body, else GET.
+export function resolveMethod(flags: Record<string, string | boolean>, hasBody: boolean): "GET" | "POST" {
+  const raw = flagString(flags, "method");
+  if (raw === undefined) {
+    return hasBody ? "POST" : "GET";
+  }
+  const normalized = raw.toUpperCase();
+  if (normalized !== "GET" && normalized !== "POST") {
+    throw new Error(`Flag --method must be GET or POST (got "${raw}").`);
+  }
+  return normalized;
+}
+
 export function parseJsonFlag(flags: Record<string, string | boolean>) {
   const value = flagString(flags, "json");
   if (!value) {
