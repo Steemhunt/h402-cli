@@ -3,7 +3,7 @@ import { assertOk, requestJson } from "./api.js";
 import { backendUrl, loadConfig, saveConfig, type CliConfig } from "./config.js";
 import { createOwsWallet, runOwsCli, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
-import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, type ParsedArgs } from "./utils.js";
+import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, type ParsedArgs } from "./utils.js";
 import { createPaymentSignatureHeader, paymentRequiredFromResponse, X402_HEADERS } from "./x402.js";
 
 const DEFAULT_WALLET_NAME = "h402";
@@ -155,7 +155,7 @@ export async function quoteCommand(args: ParsedArgs) {
   const body = parseJsonFlag(args.flags);
   const query = parseQueryFlag(args.flags);
   const provider = flagString(args.flags, "provider");
-  const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
+  const method = resolveMethod(args.flags, body !== undefined);
   const result = await requestJson(apiUrl, buildProxyPath(routeId, query, provider), {
     method,
     body: body === undefined ? undefined : JSON.stringify(body)
@@ -177,7 +177,7 @@ export async function callCommand(args: ParsedArgs) {
   const body = parseJsonFlag(args.flags);
   const query = parseQueryFlag(args.flags);
   const provider = flagString(args.flags, "provider");
-  const method = (flagString(args.flags, "method") ?? (body === undefined ? "GET" : "POST")) as "GET" | "POST";
+  const method = resolveMethod(args.flags, body !== undefined);
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
   const token = config.sessions[apiUrl];
   const { name, address: walletAddress } = await resolveSigningWallet(args, config);

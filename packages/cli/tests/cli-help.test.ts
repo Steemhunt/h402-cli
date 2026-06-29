@@ -37,6 +37,20 @@ describe("help rendering", () => {
     expect(help).toContain("h402 call web/search");
   });
 
+  it("the call example is auto-routable (no provider-native field without pinning)", () => {
+    // web/search's `limit` is provider-native; an `auto` example that includes it 402/422s
+    // on the first call. A documented example must omit it unless it also pins --provider.
+    const exampleLines = commandHelp(["call"])
+      .split("\n")
+      .filter((line) => line.includes("h402 call web/search"));
+    expect(exampleLines.length).toBeGreaterThan(0);
+    for (const line of exampleLines) {
+      if (line.includes("limit")) {
+        expect(line).toContain("--provider");
+      }
+    }
+  });
+
   it("wallet help lists subcommands", () => {
     const help = commandHelp(["wallet"]);
     for (const sub of ["create", "address", "balance", "fund"]) {

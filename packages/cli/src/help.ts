@@ -86,7 +86,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
       FLAGS.noCredit,
       FLAGS.idempotencyKey
     ],
-    examples: ["h402 call web/search --name agent --no-passphrase --json '{\"query\":\"agent APIs\",\"limit\":5}'"]
+    examples: ["h402 call web/search --name agent --no-passphrase --json '{\"query\":\"agent APIs\"}'"]
   }
 };
 
