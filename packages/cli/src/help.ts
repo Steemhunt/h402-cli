@@ -23,8 +23,8 @@ const FLAGS = {
   query: { name: "query", value: "'{...}'", desc: "URL query params; values must be string/number/boolean" },
   provider: { name: "provider", value: "<name>", desc: "Pin a provider (default auto)" },
   method: { name: "method", value: "GET|POST", desc: "Override the HTTP method" },
-  passphrase: { name: "passphrase", value: "<s>", desc: "Signing passphrase (or H402_WALLET_PASSPHRASE)" },
-  noPassphrase: { name: "no-passphrase", desc: "Sign without a passphrase (for wallets created with --no-passphrase — the default agent setup)" },
+  passphrase: { name: "passphrase", value: "<s>", desc: "Passphrase for a passphrase-protected wallet (opt-in; or H402_WALLET_PASSPHRASE)" },
+  noPassphrase: { name: "no-passphrase", desc: "Force passphrase-less signing even if H402_WALLET_PASSPHRASE is set (the default needs no flag)" },
   noCredit: { name: "no-credit", desc: "Ignore bonus credits and pay x402 only" },
   idempotencyKey: { name: "idempotency-key", value: "<uuid>", desc: "Stable key for safe retries (default: random)" },
   limit: { name: "limit", value: "<n>", desc: "Max results (default 20)" }
@@ -38,9 +38,9 @@ export const COMMANDS: Record<string, CommandSpec> = {
     subcommands: {
       create: {
         usage: "h402 wallet create [flags]",
-        summary: "Create a local OWS wallet (prints its address)",
+        summary: "Create a local OWS wallet (passphrase-less by default; prints its address)",
         flags: [FLAGS.name, FLAGS.passphrase, FLAGS.noPassphrase],
-        examples: ["h402 wallet create --name agent --no-passphrase"]
+        examples: ["h402 wallet create --name agent"]
       },
       address: { usage: "h402 wallet address [flags]", summary: "Print a wallet address", flags: [FLAGS.name, FLAGS.wallet] },
       balance: {
@@ -86,14 +86,14 @@ export const COMMANDS: Record<string, CommandSpec> = {
       FLAGS.noCredit,
       FLAGS.idempotencyKey
     ],
-    examples: ["h402 call web/search --name agent --no-passphrase --json '{\"query\":\"agent APIs\"}'"]
+    examples: ["h402 call web/search --name agent --json '{\"query\":\"agent APIs\"}'"]
   }
 };
 
 const ENV_VARS: [string, string][] = [
   ["H402_API_URL", "Backend base URL override (or --api-url)"],
   ["H402_OWS_BIN", "Path to the OWS binary (defaults to the bundled copy, then PATH)"],
-  ["H402_WALLET_PASSPHRASE", "Non-interactive passphrase for signing"]
+  ["H402_WALLET_PASSPHRASE", "Passphrase for passphrase-protected wallets (only needed when the wallet was created with one)"]
 ];
 
 export function getVersion(): string {

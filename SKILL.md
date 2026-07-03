@@ -33,10 +33,11 @@ npm install -g @h402/cli            # the CLI (bundles the OWS wallet binary)
 
 Calls go to the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` to point at another backend.
 
-Create a wallet — a disposable, no-passphrase wallet is fine as an agent budget wallet:
+Create a wallet — passphrase-less by default, the right setup for an agent budget wallet
+(opt into one with `--passphrase <s>` only if you want it; then every signing command needs it):
 
 ```bash
-h402 wallet create --name agent --no-passphrase
+h402 wallet create --name agent
 # -> {"wallet":{"name":"agent","address":"0x..."}}
 ```
 
@@ -59,7 +60,7 @@ h402 search "token holders"
 h402 quote crypto/token-holders --json '{"tokenAddress":"0x...","chain":"base"}'
 
 # 3. Call it — pays automatically on the 402 challenge, returns the JSON result
-h402 call crypto/token-holders --name agent --no-passphrase \
+h402 call crypto/token-holders --name agent \
   --json '{"tokenAddress":"0x...","chain":"base"}'
 ```
 
@@ -81,7 +82,7 @@ on a retry — h402 dedupes by it, so a resent paid request never double-charges
 ## Running non-interactively (agents)
 
 - Defaults to the production backend (`https://h402.hunt.town`); set `H402_API_URL` or `--api-url` only to override.
-- Pass `--no-passphrase` on every signing command when the wallet was created with `--no-passphrase` (the default agent setup) — no prompt. For passphrase-protected wallets, `export H402_WALLET_PASSPHRASE=...` instead.
+- Wallets are passphrase-less by default, so signing needs no flags and never prompts. Only if a wallet was created with an opt-in passphrase: `export H402_WALLET_PASSPHRASE=...` (the CLI says so when it hits such a wallet).
 - Read stdout as JSON; check the process exit code (non-zero = failure, message on stderr).
 - Pass `--idempotency-key <uuid>` when you retry a `call`.
 

@@ -18,9 +18,9 @@ npm install -g @h402/cli
 ## Quickstart
 
 ```bash
-h402 wallet create --name agent --no-passphrase      # local wallet
+h402 wallet create --name agent                      # local wallet (passphrase-less by default)
 h402 wallet fund --name agent                        # or send Base USDC to the address
-h402 call web/search --name agent --no-passphrase --json '{"query":"agent APIs"}'
+h402 call web/search --name agent --json '{"query":"agent APIs"}'
 ```
 
 Calls hit the production backend (`https://h402.hunt.town`) by default — override with `--api-url` or `H402_API_URL` (e.g. `http://localhost:3000` for local dev).
@@ -52,8 +52,8 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 | `--query '{...}'` | quote, call | URL query params (GET); values must be strings/numbers/booleans |
 | `--provider <name>` | quote, call | Pin a provider; default is `auto` (h402 picks the best) |
 | `--method GET\|POST` | quote, call | Override the method (inferred from `--json` otherwise) |
-| `--passphrase <s>` | create, auth, call | Signing passphrase (or `H402_WALLET_PASSPHRASE`) |
-| `--no-passphrase` | create, auth, call | Sign without a passphrase (for wallets created with `--no-passphrase` — the default agent setup) |
+| `--passphrase <s>` | create, auth, call | Passphrase for a passphrase-protected wallet (opt-in; or `H402_WALLET_PASSPHRASE`) |
+| `--no-passphrase` | create, auth, call | Force passphrase-less signing even if `H402_WALLET_PASSPHRASE` is set (the default needs no flag) |
 | `--no-credit` | call | Ignore bonus credits and pay x402 only |
 | `--idempotency-key <uuid>` | call | Stable key for safe retries (default: random) |
 | `--limit <n>` | search | Max results (default `20`) |
@@ -84,12 +84,12 @@ A successful `call` is wrapped as `{ "data": <provider result>, "h402": <routing
 Provider-specific fields (e.g. `limit` on `web/search`) are only accepted when you pin that provider with `--provider`; on the default `auto` route, pass just the canonical fields or the request is rejected.
 
 ```bash
-export H402_WALLET_PASSPHRASE=...                 # or use --no-passphrase
-
 h402 search "token holders"                        # JSON to stdout
 h402 call crypto/token-holders --name agent \
   --json '{"tokenAddress":"0x...","chain":"base"}' # JSON result, non-zero exit on failure
 ```
+
+Signing needs no flags for the default passphrase-less wallets. Only when a wallet was created with an opt-in passphrase, `export H402_WALLET_PASSPHRASE=...` (or pass `--passphrase <s>`) — the CLI tells you exactly this when it hits such a wallet non-interactively.
 
 ## Environment
 
@@ -97,9 +97,9 @@ h402 call crypto/token-holders --name agent \
 | --- | --- |
 | `H402_API_URL` | Backend base URL override (or `--api-url`; default `https://h402.hunt.town`) |
 | `H402_OWS_BIN` | Absolute path to an `ows` binary, overriding the copy bundled with the CLI |
-| `H402_WALLET_PASSPHRASE` | Non-interactive passphrase for signing |
+| `H402_WALLET_PASSPHRASE` | Passphrase for passphrase-protected wallets (only needed when the wallet was created with one) |
 
-Passphrases are never stored. Wallets created with `--no-passphrase` (the default agent setup) must pass `--no-passphrase` on every signing command; add a passphrase when a wallet guards meaningful funds. The CLI persists only the backend URL, session tokens, and known wallet addresses in `~/.h402/config.json`.
+Passphrases are never stored. Wallets are passphrase-less by default; opt in at create time (`--passphrase <s>`, or bare `--passphrase` to be prompted) when a wallet guards meaningful funds. The CLI persists only the backend URL, session tokens, and known wallet addresses in `~/.h402/config.json`.
 
 ## Contributing
 
