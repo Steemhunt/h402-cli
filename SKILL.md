@@ -81,7 +81,7 @@ on a retry — h402 dedupes by it, so a resent paid request never double-charges
 ## Running non-interactively (agents)
 
 - Defaults to the production backend (`https://h402.hunt.town`); set `H402_API_URL` or `--api-url` only to override.
-- `export H402_WALLET_PASSPHRASE=...` (or `--no-passphrase` for a disposable wallet) — no prompt.
+- Pass `--no-passphrase` on every signing command when the wallet was created with `--no-passphrase` (the default agent setup) — no prompt. For passphrase-protected wallets, `export H402_WALLET_PASSPHRASE=...` instead.
 - Read stdout as JSON; check the process exit code (non-zero = failure, message on stderr).
 - Pass `--idempotency-key <uuid>` when you retry a `call`.
 

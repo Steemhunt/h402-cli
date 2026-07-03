@@ -24,7 +24,7 @@ const FLAGS = {
   provider: { name: "provider", value: "<name>", desc: "Pin a provider (default auto)" },
   method: { name: "method", value: "GET|POST", desc: "Override the HTTP method" },
   passphrase: { name: "passphrase", value: "<s>", desc: "Signing passphrase (or H402_WALLET_PASSPHRASE)" },
-  noPassphrase: { name: "no-passphrase", desc: "Sign without a passphrase (disposable wallets only)" },
+  noPassphrase: { name: "no-passphrase", desc: "Sign without a passphrase (for wallets created with --no-passphrase — the default agent setup)" },
   noCredit: { name: "no-credit", desc: "Ignore bonus credits and pay x402 only" },
   idempotencyKey: { name: "idempotency-key", value: "<uuid>", desc: "Stable key for safe retries (default: random)" },
   limit: { name: "limit", value: "<n>", desc: "Max results (default 20)" }

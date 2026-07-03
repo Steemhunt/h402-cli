@@ -53,7 +53,7 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 | `--provider <name>` | quote, call | Pin a provider; default is `auto` (h402 picks the best) |
 | `--method GET\|POST` | quote, call | Override the method (inferred from `--json` otherwise) |
 | `--passphrase <s>` | create, auth, call | Signing passphrase (or `H402_WALLET_PASSPHRASE`) |
-| `--no-passphrase` | create, auth, call | Sign without a passphrase (disposable wallets only) |
+| `--no-passphrase` | create, auth, call | Sign without a passphrase (for wallets created with `--no-passphrase` — the default agent setup) |
 | `--no-credit` | call | Ignore bonus credits and pay x402 only |
 | `--idempotency-key <uuid>` | call | Stable key for safe retries (default: random) |
 | `--limit <n>` | search | Max results (default `20`) |
@@ -99,7 +99,7 @@ h402 call crypto/token-holders --name agent \
 | `H402_OWS_BIN` | Absolute path to an `ows` binary, overriding the copy bundled with the CLI |
 | `H402_WALLET_PASSPHRASE` | Non-interactive passphrase for signing |
 
-Passphrases are never stored. Use `--no-passphrase` only for disposable test wallets. The CLI persists only the backend URL, session tokens, and known wallet addresses in `~/.h402/config.json`.
+Passphrases are never stored. Wallets created with `--no-passphrase` (the default agent setup) must pass `--no-passphrase` on every signing command; add a passphrase when a wallet guards meaningful funds. The CLI persists only the backend URL, session tokens, and known wallet addresses in `~/.h402/config.json`.
 
 ## Contributing
 
