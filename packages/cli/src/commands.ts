@@ -12,16 +12,66 @@ function walletName(args: ParsedArgs) {
   return flagString(args.flags, "name", DEFAULT_WALLET_NAME) as string;
 }
 
-async function walletPassphrase(args: ParsedArgs, options = { confirm: false }) {
+// Explicit passphrase from flags/env. Wallets are passphrase-less by default
+// (the onboarding default), so this is usually undefined and signing simply
+// runs without one. --no-passphrase force-skips even an exported passphrase.
+function explicitPassphrase(args: ParsedArgs) {
   if (flagBoolean(args.flags, "no-passphrase")) {
     return undefined;
   }
+  return flagString(args.flags, "passphrase", process.env.H402_WALLET_PASSPHRASE);
+}
 
-  const passphrase = flagString(args.flags, "passphrase", process.env.H402_WALLET_PASSPHRASE);
-  if (!passphrase) {
-    return promptPassphrase(options);
+// OWS reports any keystore/passphrase disagreement as an AEAD decryption
+// failure: a protected wallet signed without (or with the wrong) passphrase,
+// or a passphrase supplied for a wallet created without one.
+const PASSPHRASE_MISMATCH = /decryption failed/i;
+
+async function promptBarePassphrase(options = { confirm: false }) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("Bare --passphrase prompts interactively; pass --passphrase <s> or set H402_WALLET_PASSPHRASE in non-interactive use.");
   }
-  return passphrase;
+  return promptPassphrase(options);
+}
+
+// Sign with the explicit passphrase (usually none). Only a passphrase-protected
+// keystore escalates: prompt once on an interactive terminal, otherwise fail
+// with the H402_WALLET_PASSPHRASE hint — that env var is only ever needed for
+// wallets that opted into a passphrase at create time.
+export async function signWithWalletPassphrase<T>(
+  args: ParsedArgs,
+  walletName: string,
+  sign: (passphrase?: string) => Promise<T>
+): Promise<T> {
+  // Bare --passphrase = "prompt me" (kept out of shell history/env).
+  const explicit = args.flags.passphrase === true ? await promptBarePassphrase() : explicitPassphrase(args);
+  try {
+    return await sign(explicit);
+  } catch (error) {
+    if (!(error instanceof Error) || !PASSPHRASE_MISMATCH.test(error.message)) {
+      throw error;
+    }
+    if (explicit !== undefined) {
+      throw new Error(`Wallet "${walletName}" rejected the passphrase from --passphrase / H402_WALLET_PASSPHRASE.`);
+    }
+    if (flagBoolean(args.flags, "no-passphrase")) {
+      throw new Error(`Wallet "${walletName}" is passphrase-protected, but --no-passphrase was passed.`);
+    }
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      throw new Error(`Wallet "${walletName}" is passphrase-protected. Set H402_WALLET_PASSPHRASE (or pass --passphrase <s>) for non-interactive use.`);
+    }
+    return sign(await promptPassphrase({ confirm: false }));
+  }
+}
+
+// Passphrase for `wallet create`: none by default (agents sign with zero flags);
+// opt in with `--passphrase <s>` / H402_WALLET_PASSPHRASE, or bare `--passphrase`
+// to be prompted with confirmation.
+export async function createPassphrase(args: ParsedArgs) {
+  if (args.flags.passphrase === true) {
+    return promptBarePassphrase({ confirm: true });
+  }
+  return explicitPassphrase(args);
 }
 
 // Resolve the wallet that will BOTH sign and own the request address, so the two
@@ -66,7 +116,7 @@ export async function walletCommand(args: ParsedArgs) {
   const config = await loadConfig();
 
   if (subcommand === "create") {
-    const wallet = await createOwsWallet(name, await walletPassphrase(args, { confirm: true }));
+    const wallet = await createOwsWallet(name, await createPassphrase(args));
     config.wallets[name] = { address: wallet.address };
     await saveConfig(config);
     printJson({ wallet: { name, address: wallet.address } });
@@ -112,7 +162,7 @@ export async function authCommand(args: ParsedArgs) {
       body: JSON.stringify({ address })
     })
   ).challenge;
-  const signature = await signOwsMessage(name, challenge.message, await walletPassphrase(args));
+  const signature = await signWithWalletPassphrase(args, name, (passphrase) => signOwsMessage(name, challenge.message, passphrase));
   const session = assertOk(
     await requestJson<{ session: { token: string; address: string; expiresAt: string } }>(apiUrl, "/api/auth/verify", {
       method: "POST",
@@ -205,12 +255,14 @@ export async function callCommand(args: ParsedArgs) {
     return;
   }
 
-  const paymentSignature = await createPaymentSignatureHeader({
-    paymentRequired,
-    walletAddress,
-    walletName: name,
-    passphrase: await walletPassphrase(args)
-  });
+  const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
+    createPaymentSignatureHeader({
+      paymentRequired,
+      walletAddress,
+      walletName: name,
+      passphrase
+    })
+  );
   const paid = await requestJson<unknown>(apiUrl, path, {
     method,
     headers: {

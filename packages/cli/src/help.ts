@@ -3,8 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // One spec per command drives BOTH the rendered help and unknown-flag rejection,
-// so they can never drift apart.
-type Flag = { name: string; value?: string; desc: string };
+// so they can never drift apart. `valueOptional` marks a value flag whose bare
+// form is meaningful (e.g. bare --passphrase = "prompt me").
+type Flag = { name: string; value?: string; valueOptional?: boolean; desc: string };
 type CommandSpec = {
   usage: string;
   summary: string;
@@ -23,8 +24,13 @@ const FLAGS = {
   query: { name: "query", value: "'{...}'", desc: "URL query params; values must be string/number/boolean" },
   provider: { name: "provider", value: "<name>", desc: "Pin a provider (default auto)" },
   method: { name: "method", value: "GET|POST", desc: "Override the HTTP method" },
-  passphrase: { name: "passphrase", value: "<s>", desc: "Signing passphrase (or H402_WALLET_PASSPHRASE)" },
-  noPassphrase: { name: "no-passphrase", desc: "Sign without a passphrase (for wallets created with --no-passphrase — the default agent setup)" },
+  passphrase: {
+    name: "passphrase",
+    value: "[<s>]",
+    valueOptional: true,
+    desc: "Passphrase for a passphrase-protected wallet; omit the value to be prompted (or H402_WALLET_PASSPHRASE)"
+  },
+  noPassphrase: { name: "no-passphrase", desc: "Force passphrase-less signing even if H402_WALLET_PASSPHRASE is set (the default needs no flag)" },
   noCredit: { name: "no-credit", desc: "Ignore bonus credits and pay x402 only" },
   idempotencyKey: { name: "idempotency-key", value: "<uuid>", desc: "Stable key for safe retries (default: random)" },
   limit: { name: "limit", value: "<n>", desc: "Max results (default 20)" }
@@ -38,9 +44,9 @@ export const COMMANDS: Record<string, CommandSpec> = {
     subcommands: {
       create: {
         usage: "h402 wallet create [flags]",
-        summary: "Create a local OWS wallet (prints its address)",
+        summary: "Create a local OWS wallet (passphrase-less by default; prints its address)",
         flags: [FLAGS.name, FLAGS.passphrase, FLAGS.noPassphrase],
-        examples: ["h402 wallet create --name agent --no-passphrase"]
+        examples: ["h402 wallet create --name agent"]
       },
       address: { usage: "h402 wallet address [flags]", summary: "Print a wallet address", flags: [FLAGS.name, FLAGS.wallet] },
       balance: {
@@ -86,14 +92,14 @@ export const COMMANDS: Record<string, CommandSpec> = {
       FLAGS.noCredit,
       FLAGS.idempotencyKey
     ],
-    examples: ["h402 call web/search --name agent --no-passphrase --json '{\"query\":\"agent APIs\"}'"]
+    examples: ["h402 call web/search --name agent --json '{\"query\":\"agent APIs\"}'"]
   }
 };
 
 const ENV_VARS: [string, string][] = [
   ["H402_API_URL", "Backend base URL override (or --api-url)"],
   ["H402_OWS_BIN", "Path to the OWS binary (defaults to the bundled copy, then PATH)"],
-  ["H402_WALLET_PASSPHRASE", "Non-interactive passphrase for signing"]
+  ["H402_WALLET_PASSPHRASE", "Passphrase for passphrase-protected wallets (only needed when the wallet was created with one)"]
 ];
 
 export function getVersion(): string {
@@ -190,10 +196,11 @@ export function assertKnownFlags(commandPath: string[], flags: Record<string, st
   if (!spec) {
     return; // Unknown command/subcommand: the command handler reports it.
   }
-  // Flag name -> whether it requires a value (--help is an always-allowed boolean).
-  const valueFlags = new Map<string, boolean>([["help", false]]);
+  // Flag name -> value arity (--help is an always-allowed boolean). "optional"
+  // flags are meaningful both bare and with a value (bare --passphrase = prompt).
+  const valueFlags = new Map<string, "required" | "optional" | "none">([["help", "none"]]);
   for (const flag of spec.flags) {
-    valueFlags.set(flag.name, flag.value !== undefined);
+    valueFlags.set(flag.name, flag.value === undefined ? "none" : flag.valueOptional ? "optional" : "required");
   }
 
   const unknown = Object.keys(flags).filter((key) => !valueFlags.has(key));
@@ -202,14 +209,14 @@ export function assertKnownFlags(commandPath: string[], flags: Record<string, st
   }
 
   for (const [name, provided] of Object.entries(flags)) {
-    const requiresValue = valueFlags.get(name);
-    if (requiresValue && typeof provided !== "string") {
+    const arity = valueFlags.get(name);
+    if (arity === "required" && typeof provided !== "string") {
       throw new Error(`Flag --${name} requires a value. Run: h402 ${commandPath.join(" ")} --help`);
     }
     // A boolean flag that captured a following token (e.g. `--no-passphrase web/search`,
     // where the parser greedily consumed the route id) is a mistake; "true" stays
     // valid since flagBoolean() accepts it.
-    if (requiresValue === false && typeof provided === "string" && provided !== "true") {
+    if (arity === "none" && typeof provided === "string" && provided !== "true") {
       throw new Error(`Flag --${name} does not take a value (got "${provided}"). Run: h402 ${commandPath.join(" ")} --help`);
     }
   }

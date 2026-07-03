@@ -26,13 +26,13 @@ Open-source toolkit for **h402 — the x402 router for agent capabilities**. One
 ```bash
 npm install -g @h402/cli
 
-# A local, non-custodial wallet (keys stay on your machine):
-h402 wallet create --name agent --no-passphrase
+# A local, non-custodial wallet (keys stay on your machine; passphrase-less by default):
+h402 wallet create --name agent
 # Fund it with a few dollars of Base USDC — send to the printed address,
 # or run: h402 wallet fund --name agent
 
 h402 search "web search"
-h402 call web/search --name agent --no-passphrase --json '{"query":"agent payments"}'
+h402 call web/search --name agent --json '{"query":"agent payments"}'
 ```
 
 The CLI targets the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` only when pointing at another backend such as local dev.
