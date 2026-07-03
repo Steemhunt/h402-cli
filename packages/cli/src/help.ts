@@ -3,8 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // One spec per command drives BOTH the rendered help and unknown-flag rejection,
-// so they can never drift apart.
-type Flag = { name: string; value?: string; desc: string };
+// so they can never drift apart. `valueOptional` marks a value flag whose bare
+// form is meaningful (e.g. bare --passphrase = "prompt me").
+type Flag = { name: string; value?: string; valueOptional?: boolean; desc: string };
 type CommandSpec = {
   usage: string;
   summary: string;
@@ -23,7 +24,12 @@ const FLAGS = {
   query: { name: "query", value: "'{...}'", desc: "URL query params; values must be string/number/boolean" },
   provider: { name: "provider", value: "<name>", desc: "Pin a provider (default auto)" },
   method: { name: "method", value: "GET|POST", desc: "Override the HTTP method" },
-  passphrase: { name: "passphrase", value: "<s>", desc: "Passphrase for a passphrase-protected wallet (opt-in; or H402_WALLET_PASSPHRASE)" },
+  passphrase: {
+    name: "passphrase",
+    value: "[<s>]",
+    valueOptional: true,
+    desc: "Passphrase for a passphrase-protected wallet; omit the value to be prompted (or H402_WALLET_PASSPHRASE)"
+  },
   noPassphrase: { name: "no-passphrase", desc: "Force passphrase-less signing even if H402_WALLET_PASSPHRASE is set (the default needs no flag)" },
   noCredit: { name: "no-credit", desc: "Ignore bonus credits and pay x402 only" },
   idempotencyKey: { name: "idempotency-key", value: "<uuid>", desc: "Stable key for safe retries (default: random)" },
@@ -190,10 +196,11 @@ export function assertKnownFlags(commandPath: string[], flags: Record<string, st
   if (!spec) {
     return; // Unknown command/subcommand: the command handler reports it.
   }
-  // Flag name -> whether it requires a value (--help is an always-allowed boolean).
-  const valueFlags = new Map<string, boolean>([["help", false]]);
+  // Flag name -> value arity (--help is an always-allowed boolean). "optional"
+  // flags are meaningful both bare and with a value (bare --passphrase = prompt).
+  const valueFlags = new Map<string, "required" | "optional" | "none">([["help", "none"]]);
   for (const flag of spec.flags) {
-    valueFlags.set(flag.name, flag.value !== undefined);
+    valueFlags.set(flag.name, flag.value === undefined ? "none" : flag.valueOptional ? "optional" : "required");
   }
 
   const unknown = Object.keys(flags).filter((key) => !valueFlags.has(key));
@@ -202,14 +209,14 @@ export function assertKnownFlags(commandPath: string[], flags: Record<string, st
   }
 
   for (const [name, provided] of Object.entries(flags)) {
-    const requiresValue = valueFlags.get(name);
-    if (requiresValue && typeof provided !== "string") {
+    const arity = valueFlags.get(name);
+    if (arity === "required" && typeof provided !== "string") {
       throw new Error(`Flag --${name} requires a value. Run: h402 ${commandPath.join(" ")} --help`);
     }
     // A boolean flag that captured a following token (e.g. `--no-passphrase web/search`,
     // where the parser greedily consumed the route id) is a mistake; "true" stays
     // valid since flagBoolean() accepts it.
-    if (requiresValue === false && typeof provided === "string" && provided !== "true") {
+    if (arity === "none" && typeof provided === "string" && provided !== "true") {
       throw new Error(`Flag --${name} does not take a value (got "${provided}"). Run: h402 ${commandPath.join(" ")} --help`);
     }
   }

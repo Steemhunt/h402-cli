@@ -27,6 +27,13 @@ function explicitPassphrase(args: ParsedArgs) {
 // or a passphrase supplied for a wallet created without one.
 const PASSPHRASE_MISMATCH = /decryption failed/i;
 
+async function promptBarePassphrase(options = { confirm: false }) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("Bare --passphrase prompts interactively; pass --passphrase <s> or set H402_WALLET_PASSPHRASE in non-interactive use.");
+  }
+  return promptPassphrase(options);
+}
+
 // Sign with the explicit passphrase (usually none). Only a passphrase-protected
 // keystore escalates: prompt once on an interactive terminal, otherwise fail
 // with the H402_WALLET_PASSPHRASE hint — that env var is only ever needed for
@@ -36,7 +43,8 @@ export async function signWithWalletPassphrase<T>(
   walletName: string,
   sign: (passphrase?: string) => Promise<T>
 ): Promise<T> {
-  const explicit = explicitPassphrase(args);
+  // Bare --passphrase = "prompt me" (kept out of shell history/env).
+  const explicit = args.flags.passphrase === true ? await promptBarePassphrase() : explicitPassphrase(args);
   try {
     return await sign(explicit);
   } catch (error) {
@@ -61,10 +69,7 @@ export async function signWithWalletPassphrase<T>(
 // to be prompted with confirmation.
 export async function createPassphrase(args: ParsedArgs) {
   if (args.flags.passphrase === true) {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      throw new Error("Bare --passphrase prompts interactively; pass --passphrase <s> or set H402_WALLET_PASSPHRASE in non-interactive use.");
-    }
-    return promptPassphrase({ confirm: true });
+    return promptBarePassphrase({ confirm: true });
   }
   return explicitPassphrase(args);
 }

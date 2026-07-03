@@ -52,7 +52,7 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 | `--query '{...}'` | quote, call | URL query params (GET); values must be strings/numbers/booleans |
 | `--provider <name>` | quote, call | Pin a provider; default is `auto` (h402 picks the best) |
 | `--method GET\|POST` | quote, call | Override the method (inferred from `--json` otherwise) |
-| `--passphrase <s>` | create, auth, call | Passphrase for a passphrase-protected wallet (opt-in; or `H402_WALLET_PASSPHRASE`) |
+| `--passphrase [<s>]` | create, auth, call | Passphrase for a passphrase-protected wallet; omit the value to be prompted (or `H402_WALLET_PASSPHRASE`) |
 | `--no-passphrase` | create, auth, call | Force passphrase-less signing even if `H402_WALLET_PASSPHRASE` is set (the default needs no flag) |
 | `--no-credit` | call | Ignore bonus credits and pay x402 only |
 | `--idempotency-key <uuid>` | call | Stable key for safe retries (default: random) |

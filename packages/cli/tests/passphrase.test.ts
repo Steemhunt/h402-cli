@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPassphrase, signWithWalletPassphrase } from "../src/commands";
-import type { ParsedArgs } from "../src/utils";
+import { createPassphrase, signWithWalletPassphrase, walletCommand } from "../src/commands";
+import { assertKnownFlags } from "../src/help";
+import { parseArgs, type ParsedArgs } from "../src/utils";
 
 function args(flags: Record<string, string | boolean> = {}): ParsedArgs {
   return { positional: [], flags };
@@ -82,5 +83,31 @@ describe("createPassphrase", () => {
     await expect(createPassphrase(args({ passphrase: true }))).rejects.toThrow(
       "Bare --passphrase prompts interactively; pass --passphrase <s> or set H402_WALLET_PASSPHRASE in non-interactive use."
     );
+  });
+});
+
+// Reviewer regression (cli#29): bare --passphrase must survive the real dispatch
+// path — parseArgs + assertKnownFlags + command — not just direct unit calls.
+describe("bare --passphrase through the CLI dispatch path", () => {
+  it("passes flag preflight and reaches the create prompt contract non-interactively", async () => {
+    const parsed = parseArgs(["wallet", "create", "--name", "bare-pass-probe", "--passphrase"]);
+    expect(parsed.flags.passphrase).toBe(true);
+    expect(() => assertKnownFlags(["wallet", "create"], parsed.flags)).not.toThrow();
+    // vitest is non-interactive: the create branch reports the bare-passphrase
+    // contract — and throws before any wallet is created.
+    await expect(walletCommand(parsed)).rejects.toThrow("Bare --passphrase prompts interactively");
+  });
+
+  it("keeps rejecting bare required-value flags", () => {
+    const parsed = parseArgs(["wallet", "create", "--name"]);
+    expect(() => assertKnownFlags(["wallet", "create"], parsed.flags)).toThrow("Flag --name requires a value");
+  });
+
+  it("treats bare --passphrase on signing as prompt-me and errors non-interactively before signing", async () => {
+    const parsed = parseArgs(["call", "web/search", "--passphrase"]);
+    expect(() => assertKnownFlags(["call"], parsed.flags)).not.toThrow();
+    const sign = vi.fn();
+    await expect(signWithWalletPassphrase(parsed, "vault", sign)).rejects.toThrow("Bare --passphrase prompts interactively");
+    expect(sign).not.toHaveBeenCalled();
   });
 });
