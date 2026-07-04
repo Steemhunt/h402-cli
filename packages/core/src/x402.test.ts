@@ -84,7 +84,8 @@ describe("buildTransferAuthorization", () => {
       maxTimeoutSeconds: 120,
       now: 1_000
     });
-    expect(authorization.validAfter).toBe("995");
+    expect(authorization.validAfter).toBe("940");
+    expect(Number(authorization.validBefore) - Number(authorization.validAfter)).toBe(180);
     expect(authorization.validBefore).toBe("1120");
     expect(authorization.value).toBe("50000");
     expect(authorization.nonce).toMatch(/^0x[a-f0-9]{64}$/);

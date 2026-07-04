@@ -20,11 +20,16 @@ function defaultConfig(): CliConfig {
   return { backendUrl: process.env.H402_API_URL ?? DEFAULT_BACKEND_URL, sessions: {}, wallets: {} };
 }
 
+async function tightenConfigPermissions(file: string) {
+  await Promise.all([chmod(path.dirname(file), 0o700).catch(() => undefined), chmod(file, 0o600).catch(() => undefined)]);
+}
+
 export async function loadConfig(): Promise<CliConfig> {
   const file = configPath();
   let raw: string;
   try {
     raw = await readFile(file, "utf8");
+    await tightenConfigPermissions(file);
   } catch (error) {
     // A missing file is a normal first run. Any other read error (permissions,
     // I/O) must surface, not be masked by silently starting from defaults.
@@ -70,7 +75,7 @@ export async function saveConfig(config: CliConfig) {
   // mkdir/writeFile modes are umask-masked and the file mode only applies on
   // create, so tighten existing dir/file too. Best-effort: a no-op on platforms
   // without POSIX permissions.
-  await Promise.all([chmod(dir, 0o700).catch(() => undefined), chmod(file, 0o600).catch(() => undefined)]);
+  await tightenConfigPermissions(file);
 }
 
 export function backendUrl(config: CliConfig, apiUrlFlag?: string) {

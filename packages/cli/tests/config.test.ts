@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -109,6 +109,17 @@ describe("loadConfig / saveConfig", () => {
     await mkdir(path.dirname(configFile), { recursive: true });
     await writeFile(configFile, JSON.stringify({ wallets: { h402: { address: "0xabc" } } }));
     await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: { h402: { address: "0xabc" } } });
+  });
+
+  it.skipIf(process.platform === "win32")("tightens pre-existing config permissions during load", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true, mode: 0o755 });
+    await writeFile(configFile, JSON.stringify({ backendUrl: PROD_URL, sessions: { [PROD_URL]: "tok" }, wallets: {} }), { mode: 0o644 });
+    await chmod(path.dirname(configFile), 0o755);
+    await chmod(configFile, 0o644);
+
+    await expect(loadConfig()).resolves.toMatchObject({ sessions: { [PROD_URL]: "tok" } });
+    expect((await stat(configFile)).mode & 0o777).toBe(0o600);
+    expect((await stat(path.dirname(configFile))).mode & 0o777).toBe(0o700);
   });
 
   it.skipIf(process.platform === "win32")("writes config and directory with private permissions", async () => {

@@ -173,7 +173,7 @@ export async function authCommand(args: ParsedArgs) {
   config.backendUrl = apiUrl;
   config.sessions[apiUrl] = session.token;
   await saveConfig(config);
-  printJson({ session });
+  printJson({ session: { address: session.address, expiresAt: session.expiresAt } });
 }
 
 export async function searchCommand(args: ParsedArgs) {
