@@ -14,6 +14,8 @@ npm install -g @h402/cli
 ```
 
 > The `ows` wallet binary ([Open Wallet Standard](https://github.com/open-wallet-standard)) ships with the CLI, so a global install is self-contained. To use your own build instead, set `H402_OWS_BIN=/absolute/path/to/ows`.
+>
+> OWS native bindings currently target macOS/Linux glibc on x64/arm64. Non-wallet commands (`--help`, `search`, `quote`) lazy-load OWS and still work without native bindings; wallet creation and payment signing require those JS native bindings. `H402_OWS_BIN` only overrides the standalone `ows` binary used by balance/funding commands on custom runtimes.
 
 ## Quickstart
 

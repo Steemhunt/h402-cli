@@ -2,10 +2,26 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { createWallet, signMessage, signTypedData, type WalletInfo } from "@open-wallet-standard/core";
+import type { WalletInfo } from "@open-wallet-standard/core";
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const HEX_SIGNATURE_PATTERN = /^(0x)?[a-fA-F0-9]+$/;
+
+type OwsCore = typeof import("@open-wallet-standard/core");
+let owsCorePromise: Promise<OwsCore> | undefined;
+
+async function loadOwsCore(): Promise<OwsCore> {
+  try {
+    owsCorePromise ??= import("@open-wallet-standard/core");
+    return await owsCorePromise;
+  } catch (error) {
+    owsCorePromise = undefined;
+    throw new Error(
+      `OWS wallet native bindings are unavailable on this platform: ${error instanceof Error ? error.message : String(error)}. ` +
+        "Non-wallet commands such as --help/search/quote can still run. Wallet creation and payment signing require @open-wallet-standard/core native bindings on macOS/Linux glibc x64/arm64; H402_OWS_BIN only overrides the standalone ows binary used by balance/funding commands."
+    );
+  }
+}
 
 export function getEvmAddress(wallet: WalletInfo) {
   const account =
@@ -21,6 +37,7 @@ export function getEvmAddress(wallet: WalletInfo) {
 }
 
 export async function createOwsWallet(name: string, passphrase?: string) {
+  const { createWallet } = await loadOwsCore();
   const wallet = createWallet(name, passphrase);
   return { name, address: getEvmAddress(wallet), wallet };
 }
@@ -44,11 +61,13 @@ export function normalizeOwsSignature(signature: string, recoveryId?: number) {
 }
 
 export async function signOwsMessage(walletName: string, message: string, passphrase?: string) {
+  const { signMessage } = await loadOwsCore();
   const result = signMessage(walletName, "base", message, passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
 }
 
 export async function signOwsTypedData(walletName: string, typedData: unknown, passphrase?: string) {
+  const { signTypedData } = await loadOwsCore();
   const result = signTypedData(walletName, "base", JSON.stringify(typedData), passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
 }

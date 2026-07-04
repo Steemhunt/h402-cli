@@ -1,5 +1,21 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { getEvmAddress, normalizeOwsSignature, resolveOwsInvocation } from "../src/ows";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const owsSource = readFileSync(path.join(here, "..", "src", "ows.ts"), "utf8");
+
+describe("OWS module loading", () => {
+  it("does not statically import native OWS bindings at CLI startup", () => {
+    const staticOwsImports = owsSource
+      .split("\n")
+      .filter((line) => /^import(?!\s+type\b).*from ["']@open-wallet-standard\/core["']/.test(line));
+    expect(staticOwsImports).toEqual([]);
+    expect(owsSource).toContain('import("@open-wallet-standard/core")');
+  });
+});
 
 describe("getEvmAddress", () => {
   it("prefers the Base EVM account when present", () => {
