@@ -22,5 +22,24 @@ describe("doc examples stay runnable against the catalog contract", () => {
         .filter((line) => line.includes("h402 call web/search") && line.includes("limit") && !line.includes("--provider"));
       expect(offenders).toEqual([]);
     });
+
+    it(`${label}: response envelope docs include optional meta and h402 followUp`, () => {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain('"meta"?: <pagination/provider metadata>');
+      expect(text).toContain("followUp");
+      expect(text).not.toContain('{ "data": <provider result>, "h402": <routing metadata> }');
+    });
   }
+
+  it("package README flag table matches command-specific strict flag handling", () => {
+    const text = readFileSync(DOC_FILES["package README.md"], "utf8");
+    expect(text).toContain("| `--name <wallet>` | wallet create/address/balance/fund; auth; call |");
+    expect(text).toContain("| `--wallet 0x...` | wallet address/balance/fund; auth; call |");
+    expect(text).toContain("| `--api-url <url>` | auth, credits, search, quote, call |");
+    expect(text).toContain("| `--passphrase [<s>]` | wallet create, auth, call |");
+    expect(text).toContain("| `--no-passphrase` | wallet create, auth, call |");
+    expect(text).not.toContain("| `--name <wallet>` | all |");
+    expect(text).not.toContain("| `--wallet 0x...` | all |");
+    expect(text).not.toContain("| `--api-url <url>` | all |");
+  });
 });

@@ -69,7 +69,7 @@ h402 call crypto/token-holders --name agent \
 - h402 auto-routes to the best provider. Pin one with `--provider <name>` for determinism.
 - Provider-specific fields (e.g. `limit` on `web/search`) only work when you pin that provider with `--provider`; on the default `auto` route, send just the canonical fields shown in the catalog or the call is rejected.
 - Every command prints **JSON to stdout** (including `wallet balance`); failures print to stderr and exit non-zero. The one exception is `wallet fund`, which opens an interactive deposit flow.
-- A successful `call` returns `{ "data": <provider result>, "h402": <routing metadata> }` — read the provider's output from `data`; `h402` has `provider`, `selectedCandidateId`, `routing`, `paidBy`, and `ledgerEntryId`. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
+- A successful `call` returns `{ "data": <provider result>, "meta"?: <pagination/provider metadata>, "h402": <routing metadata> }` — read the provider's output from `data`; `meta` is optional and carries pagination/provider metadata when a route exposes it; `h402` has `provider`, `selectedCandidateId`, `routing`, `paidBy`, and `ledgerEntryId`. Async routes include `h402.followUp` with the poll path. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
 
 ## How payment works (per call, non-custodial)
 
