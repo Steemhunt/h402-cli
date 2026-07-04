@@ -20,6 +20,7 @@ npm install -g @h402/cli
 ```bash
 h402 wallet create --name agent                      # local wallet (passphrase-less by default)
 h402 wallet fund --name agent                        # or send Base USDC to the address
+h402 wallet list                                       # re-adopt any existing OWS wallets into config
 h402 call web/search --name agent --json '{"query":"agent APIs"}'
 ```
 
@@ -30,6 +31,7 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | Command | Description |
 | --- | --- |
 | `h402 wallet create --name <n>` | Create a local OWS wallet (prints its address) |
+| `h402 wallet list` | List OWS wallets and re-adopt them into `~/.h402/config.json` |
 | `h402 wallet address --name <n>` | Print the wallet address |
 | `h402 wallet balance --name <n>` | Show the wallet's Base USDC balance (JSON envelope) |
 | `h402 wallet fund --name <n>` | Open the interactive OWS deposit flow (human, not JSON) |
@@ -77,7 +79,7 @@ before USDC unless you pass `--no-credit`.
 
 ## Agents & automation
 
-Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`address`/`balance`. The only exception is `wallet fund`, which opens an interactive deposit flow.
+Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`address`/`balance`. The only exception is `wallet fund`, which opens an interactive deposit flow.
 
 A successful `call` is wrapped as `{ "data": <provider result>, "h402": <routing metadata> }` — read the upstream provider's payload from `data`; `h402` carries `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), and `ledgerEntryId`. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
 

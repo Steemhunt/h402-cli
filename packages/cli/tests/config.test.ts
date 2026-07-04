@@ -81,6 +81,36 @@ describe("loadConfig / saveConfig", () => {
     await expect(loadConfig()).resolves.toEqual(config);
   });
 
+  it("serializes concurrent saves and preserves independent wallet/session updates", async () => {
+    await Promise.all([
+      saveConfig({ backendUrl: PROD_URL, sessions: { "https://one.example": "one" }, wallets: { one: { address: "0x111" } } }),
+      saveConfig({ backendUrl: PROD_URL, sessions: { "https://two.example": "two" }, wallets: { two: { address: "0x222" } } })
+    ]);
+
+    await expect(loadConfig()).resolves.toEqual({
+      backendUrl: PROD_URL,
+      sessions: { "https://one.example": "one", "https://two.example": "two" },
+      wallets: { one: { address: "0x111" }, two: { address: "0x222" } }
+    });
+  });
+
+  it("does not let a stale full-snapshot save roll back newer wallet/session values", async () => {
+    const stale: CliConfig = {
+      backendUrl: PROD_URL,
+      sessions: { "https://api.example": "old" },
+      wallets: { agent: { address: "0x111" } }
+    };
+
+    await saveConfig({ backendUrl: PROD_URL, sessions: { "https://api.example": "new" }, wallets: {} });
+    await saveConfig(stale);
+
+    await expect(loadConfig()).resolves.toEqual({
+      backendUrl: PROD_URL,
+      sessions: { "https://api.example": "new" },
+      wallets: { agent: { address: "0x111" } }
+    });
+  });
+
   it("throws on malformed JSON and does not overwrite it", async () => {
     await mkdir(path.dirname(configFile), { recursive: true });
     await writeFile(configFile, "{ not valid json");
