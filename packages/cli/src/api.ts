@@ -1,4 +1,14 @@
+import { Agent } from "undici";
 import { CliError } from "./errors.js";
+
+export const H402_HTTP_TIMEOUT_MS = 450_000;
+
+const h402FetchDispatcher = new Agent({
+  headersTimeout: H402_HTTP_TIMEOUT_MS,
+  bodyTimeout: H402_HTTP_TIMEOUT_MS
+});
+
+type FetchInitWithDispatcher = RequestInit & { dispatcher?: Agent; token?: string };
 
 export type ApiResponse<T> = {
   status: number;
@@ -10,7 +20,7 @@ export type ApiResponse<T> = {
 export async function requestJson<T>(
   backendUrl: string,
   path: string,
-  init: RequestInit & { token?: string } = {}
+  init: FetchInitWithDispatcher = {}
 ): Promise<ApiResponse<T>> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
@@ -23,10 +33,13 @@ export async function requestJson<T>(
     headers.set("authorization", `Bearer ${init.token}`);
   }
 
+  const fetchInit: FetchInitWithDispatcher = { ...init };
+  delete fetchInit.token;
   const response = await fetch(`${backendUrl}${path}`, {
-    ...init,
-    headers
-  });
+    ...fetchInit,
+    headers,
+    dispatcher: fetchInit.dispatcher ?? h402FetchDispatcher
+  } as RequestInit);
 
   const text = await response.text();
   let body: T;

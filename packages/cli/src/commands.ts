@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { assertOk, requestJson } from "./api.js";
+import { CliError } from "./errors.js";
 import { backendUrl, loadConfig, saveConfig, type CliConfig } from "./config.js";
 import { createOwsWallet, runOwsCli, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
-import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, type ParsedArgs } from "./utils.js";
+import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, writeStdout, type ParsedArgs } from "./utils.js";
 import { createPaymentSignatureHeader, paymentRequiredFromResponse, X402_HEADERS } from "./x402.js";
 
 const DEFAULT_WALLET_NAME = "h402";
@@ -74,6 +75,15 @@ export async function createPassphrase(args: ParsedArgs) {
   return explicitPassphrase(args);
 }
 
+function withIdempotencyKey(error: unknown, idempotencyKey: string) {
+  const existingDetail = error instanceof CliError ? error.detail : undefined;
+  const detail = existingDetail && typeof existingDetail === "object" && !Array.isArray(existingDetail)
+    ? { ...(existingDetail as Record<string, unknown>), idempotencyKey }
+    : { idempotencyKey, ...(existingDetail === undefined ? {} : { detail: existingDetail }) };
+  const message = `${error instanceof Error ? error.message : String(error)} (idempotency-key: ${idempotencyKey})`;
+  return new CliError(message, detail);
+}
+
 // Resolve the wallet that will BOTH sign and own the request address, so the two
 // can never silently diverge. The OWS signer is keyed by wallet *name*, so the
 // address presented upstream must be that wallet's address — not an unrelated
@@ -119,12 +129,12 @@ export async function walletCommand(args: ParsedArgs) {
     const wallet = await createOwsWallet(name, await createPassphrase(args));
     config.wallets[name] = { address: wallet.address };
     await saveConfig(config);
-    printJson({ wallet: { name, address: wallet.address } });
+    await printJson({ wallet: { name, address: wallet.address } });
     return;
   }
 
   if (subcommand === "address") {
-    printJson({ wallet: await resolveSigningWallet(args, config) });
+    await printJson({ wallet: await resolveSigningWallet(args, config) });
     return;
   }
 
@@ -136,7 +146,7 @@ export async function walletCommand(args: ParsedArgs) {
     // agent-facing JSON-stdout contract holds (the raw text is preserved as-is —
     // parsing the human table into numbers would be fragile for a money tool).
     const raw = await runOwsCli(["fund", "balance", "--wallet", signingName, "--chain", "base"]);
-    printJson({ wallet: { name: signingName, address }, chain: "base", balance: { raw } });
+    await printJson({ wallet: { name: signingName, address }, chain: "base", balance: { raw } });
     return;
   }
 
@@ -145,7 +155,7 @@ export async function walletCommand(args: ParsedArgs) {
     // human/passthrough command (documented as such) — not part of the JSON contract.
     const { name: signingName } = await resolveSigningWallet(args, config);
     const output = await runOwsCli(["fund", "deposit", "--wallet", signingName, "--chain", "8453", "--token", "USDC"]);
-    process.stdout.write(`${output}\n`);
+    await writeStdout(`${output}\n`);
     return;
   }
 
@@ -173,7 +183,7 @@ export async function authCommand(args: ParsedArgs) {
   config.backendUrl = apiUrl;
   config.sessions[apiUrl] = session.token;
   await saveConfig(config);
-  printJson({ session });
+  await printJson({ session });
 }
 
 export async function searchCommand(args: ParsedArgs) {
@@ -184,7 +194,7 @@ export async function searchCommand(args: ParsedArgs) {
   const result = assertOk(
     await requestJson(apiUrl, `/api/catalog/search?q=${encodeURIComponent(query)}&limit=${flagString(args.flags, "limit", "20")}`)
   );
-  printJson(result);
+  await printJson(result);
 }
 
 export async function creditsCommand(args: ParsedArgs) {
@@ -195,7 +205,7 @@ export async function creditsCommand(args: ParsedArgs) {
     throw new Error("No session token. Run h402 auth first.");
   }
 
-  printJson(assertOk(await requestJson(apiUrl, "/api/me/credits", { token })));
+  await printJson(assertOk(await requestJson(apiUrl, "/api/me/credits", { token })));
 }
 
 export async function quoteCommand(args: ParsedArgs) {
@@ -212,12 +222,12 @@ export async function quoteCommand(args: ParsedArgs) {
   });
   const paymentRequired = paymentRequiredFromResponse(result.headers, result.body);
   if (paymentRequired) {
-    printJson({ paymentRequired });
+    await printJson({ paymentRequired });
     return;
   }
   // No challenge: a free route returns its result with a 2xx. Any non-2xx
   // (404/500/...) is a real error and must exit non-zero, not print as a result.
-  printJson(assertOk(result));
+  await printJson(assertOk(result));
 }
 
 export async function callCommand(args: ParsedArgs) {
@@ -240,37 +250,41 @@ export async function callCommand(args: ParsedArgs) {
     headers.authorization = `Bearer ${token}`;
   }
 
-  const first = await requestJson<unknown>(apiUrl, path, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+  try {
+    const first = await requestJson<unknown>(apiUrl, path, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
 
-  const paymentRequired = first.status === 402 ? paymentRequiredFromResponse(first.headers, first.body) : null;
-  if (!paymentRequired) {
-    // A 2xx means the route answered without payment (free, or covered by credit).
-    // A non-2xx first response (incl. an unparseable 402) is a real error: assertOk
-    // exits non-zero instead of printing the error body as a successful result.
-    printJson(assertOk(first));
-    return;
+    const paymentRequired = first.status === 402 ? paymentRequiredFromResponse(first.headers, first.body) : null;
+    if (!paymentRequired) {
+      // A 2xx means the route answered without payment (free, or covered by credit).
+      // A non-2xx first response (incl. an unparseable 402) is a real error: assertOk
+      // exits non-zero instead of printing the error body as a successful result.
+      await printJson(assertOk(first));
+      return;
+    }
+
+    const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
+      createPaymentSignatureHeader({
+        paymentRequired,
+        walletAddress,
+        walletName: name,
+        passphrase
+      })
+    );
+    const paid = await requestJson<unknown>(apiUrl, path, {
+      method,
+      headers: {
+        "idempotency-key": idempotencyKey,
+        [X402_HEADERS.paymentSignature]: paymentSignature
+      },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+
+    await printJson(assertOk(paid));
+  } catch (error) {
+    throw withIdempotencyKey(error, idempotencyKey);
   }
-
-  const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
-    createPaymentSignatureHeader({
-      paymentRequired,
-      walletAddress,
-      walletName: name,
-      passphrase
-    })
-  );
-  const paid = await requestJson<unknown>(apiUrl, path, {
-    method,
-    headers: {
-      "idempotency-key": idempotencyKey,
-      [X402_HEADERS.paymentSignature]: paymentSignature
-    },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-
-  printJson(assertOk(paid));
 }

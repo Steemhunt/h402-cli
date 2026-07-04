@@ -76,8 +76,37 @@ export function parseQueryFlag(flags: Record<string, string | boolean>) {
   return parsed as Record<string, unknown>;
 }
 
-export function printJson(data: unknown) {
-  process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
+function writeStream(stream: NodeJS.WritableStream, text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (error: Error) => {
+      stream.off("drain", onDrain);
+      reject(error);
+    };
+    const onDrain = () => {
+      stream.off("error", onError);
+      resolve();
+    };
+
+    stream.once("error", onError);
+    if (stream.write(text)) {
+      stream.off("error", onError);
+      resolve();
+      return;
+    }
+    stream.once("drain", onDrain);
+  });
+}
+
+export function writeStdout(text: string): Promise<void> {
+  return writeStream(process.stdout, text);
+}
+
+export function writeStderr(text: string): Promise<void> {
+  return writeStream(process.stderr, text);
+}
+
+export function printJson(data: unknown): Promise<void> {
+  return writeStdout(`${JSON.stringify(data, null, 2)}\n`);
 }
 
 export function requireValue<T>(value: T | undefined | null, message: string): T {

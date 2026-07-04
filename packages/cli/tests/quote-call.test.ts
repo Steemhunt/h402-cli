@@ -20,8 +20,8 @@ function stubFetch(status: number, body: unknown, headers: Record<string, string
   vi.stubGlobal("fetch", vi.fn(async () => res(status, body, headers)));
 }
 
-function args(routeId: string): ParsedArgs {
-  return { positional: ["cmd", routeId], flags: {} };
+function args(routeId: string, flags: ParsedArgs["flags"] = {}): ParsedArgs {
+  return { positional: ["cmd", routeId], flags };
 }
 
 const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", asset: "0x", amount: "1", payTo: "0x", maxTimeoutSeconds: 60 }] };
@@ -82,8 +82,13 @@ describe("quote/call exit codes on backend responses", () => {
   it("throws a CliError carrying the backend error body so the stderr envelope stays structured", async () => {
     const backend = { error: { code: "provider_native_field_requires_pinning", message: "pin it" } };
     stubFetch(422, backend);
-    const error = await callCommand(args("web/search")).catch((thrown: unknown) => thrown);
+    const error = await callCommand(args("web/search", { "idempotency-key": "idem-123" })).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(CliError);
-    expect(errorEnvelope(error)).toEqual({ error: { message: "Request failed: 422: pin it", detail: backend } });
+    expect(errorEnvelope(error)).toEqual({
+      error: {
+        message: "Request failed: 422: pin it (idempotency-key: idem-123)",
+        detail: { idempotencyKey: "idem-123", ...backend }
+      }
+    });
   });
 });
