@@ -56,6 +56,11 @@ describe("quote/call exit codes on backend responses", () => {
     expect(stdout).toHaveBeenCalledWith(expect.stringContaining("paymentRequired"));
   });
 
+  it("quote falls through to the HTTP error when PAYMENT-REQUIRED is malformed", async () => {
+    stubFetch(402, { error: "backend sent malformed challenge" }, { "PAYMENT-REQUIRED": "not base64" });
+    await expect(quoteCommand(args("web/search"))).rejects.toThrow(/backend sent malformed challenge/);
+  });
+
   it("quote prints the body for a free route (2xx, no challenge)", async () => {
     stubFetch(200, { result: 42 });
     await quoteCommand(args("web/free"));
