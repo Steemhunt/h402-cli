@@ -76,7 +76,10 @@ h402 call crypto/token-holders --name agent \
 The first request returns `402` with an x402 `PAYMENT-REQUIRED` challenge. The CLI signs
 a Base USDC EIP-3009 `transferWithAuthorization` **locally** (your key never leaves the
 machine), attaches it as a `PAYMENT-SIGNATURE` header, and retries the same request. You
-are charged the exact per-call price and get the result back. Reuse `--idempotency-key`
+are charged the exact per-call price and get the result back. Pass `--max-usd <amount>`
+(or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse
+signing a challenge above that USDC cap. Paid call output includes `h402.signedAmount`
+as a receipt of the amount signed. Reuse `--idempotency-key`
 on a retry — h402 dedupes by it, so a resent paid request never double-charges.
 
 ## Running non-interactively (agents)

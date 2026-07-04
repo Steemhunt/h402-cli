@@ -76,7 +76,12 @@ describe("loadConfig / saveConfig", () => {
   });
 
   it("round-trips a saved config", async () => {
-    const config: CliConfig = { backendUrl: "https://staging.example", sessions: { "https://staging.example": "tok" }, wallets: { h402: { address: "0xabc" } } };
+    const config: CliConfig = {
+      backendUrl: "https://staging.example",
+      sessions: { "https://staging.example": "tok" },
+      wallets: { h402: { address: "0xabc" } },
+      maxUsd: "0.05"
+    };
     await saveConfig(config);
     await expect(loadConfig()).resolves.toEqual(config);
   });

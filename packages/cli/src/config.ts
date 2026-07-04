@@ -6,6 +6,7 @@ export type CliConfig = {
   backendUrl: string;
   sessions: Record<string, string>;
   wallets: Record<string, { address?: string }>;
+  maxUsd?: string;
 };
 
 // @h402/cli is an end-user tool: default to the production backend. Override
@@ -50,11 +51,15 @@ export async function loadConfig(): Promise<CliConfig> {
   // crashing later when a command reads config.sessions / config.wallets.
   const config = parsed as Record<string, unknown>;
   const defaults = defaultConfig();
-  return {
+  const normalized: CliConfig = {
     backendUrl: typeof config.backendUrl === "string" ? config.backendUrl : defaults.backendUrl,
     sessions: isPlainObject(config.sessions) ? (config.sessions as Record<string, string>) : {},
     wallets: isPlainObject(config.wallets) ? (config.wallets as CliConfig["wallets"]) : {}
   };
+  if (typeof config.maxUsd === "string") {
+    normalized.maxUsd = config.maxUsd;
+  }
+  return normalized;
 }
 
 function isPlainObject(value: unknown): boolean {
