@@ -141,11 +141,13 @@ export async function walletCommand(args: ParsedArgs) {
   }
 
   if (subcommand === "fund") {
-    // `ows fund deposit` opens an interactive MoonPay deposit flow, so this is a
-    // human/passthrough command (documented as such) — not part of the JSON contract.
-    const { name: signingName } = await resolveSigningWallet(args, config);
-    const output = await runOwsCli(["fund", "deposit", "--wallet", signingName, "--chain", "8453", "--token", "USDC"]);
-    process.stdout.write(`${output}\n`);
+    const { name: signingName, address } = await resolveSigningWallet(args, config);
+    printJson({
+      wallet: { name: signingName, address },
+      network: "base",
+      token: "USDC",
+      instructions: `Send Base USDC to this address from an exchange, bridge, or another wallet, then run h402 wallet balance --name ${signingName}.`
+    });
     return;
   }
 

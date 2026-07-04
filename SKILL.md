@@ -42,7 +42,8 @@ h402 wallet create --name agent
 ```
 
 Fund it with **Base USDC**: send USDC (on Base) to that address from an exchange,
-bridge, or another wallet — or run `h402 wallet fund --name agent`. Then check it:
+bridge, or another wallet. `h402 wallet fund --name agent` prints the address and
+funding instructions; it does not depend on the OWS/MoonPay deposit flow. Then check it:
 
 ```bash
 h402 wallet balance --name agent
@@ -68,7 +69,7 @@ h402 call crypto/token-holders --name agent \
 - `--json '{...}'` is the request body; use `--query '{...}'` for GET query params instead.
 - h402 auto-routes to the best provider. Pin one with `--provider <name>` for determinism.
 - Provider-specific fields (e.g. `limit` on `web/search`) only work when you pin that provider with `--provider`; on the default `auto` route, send just the canonical fields shown in the catalog or the call is rejected.
-- Every command prints **JSON to stdout** (including `wallet balance`); failures print to stderr and exit non-zero. The one exception is `wallet fund`, which opens an interactive deposit flow.
+- Every command prints **JSON to stdout** (including `wallet fund` and `wallet balance`); failures print to stderr and exit non-zero.
 - A successful `call` returns `{ "data": <provider result>, "h402": <routing metadata> }` — read the provider's output from `data`; `h402` has `provider`, `selectedCandidateId`, `routing`, `paidBy`, and `ledgerEntryId`. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
 
 ## How payment works (per call, non-custodial)

@@ -55,7 +55,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
         flags: [FLAGS.name, FLAGS.wallet],
         examples: ["h402 wallet balance --name agent"]
       },
-      fund: { usage: "h402 wallet fund [flags]", summary: "Open the OWS deposit flow to fund a wallet", flags: [FLAGS.name, FLAGS.wallet] }
+      fund: { usage: "h402 wallet fund [flags]", summary: "Print the Base USDC deposit address for a wallet", flags: [FLAGS.name, FLAGS.wallet] }
     }
   },
   auth: {

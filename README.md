@@ -28,8 +28,8 @@ npm install -g @h402/cli
 
 # A local, non-custodial wallet (keys stay on your machine; passphrase-less by default):
 h402 wallet create --name agent
-# Fund it with a few dollars of Base USDC — send to the printed address,
-# or run: h402 wallet fund --name agent
+# Fund it with a few dollars of Base USDC — send to the printed address.
+# h402 wallet fund --name agent prints the address and funding instructions.
 
 h402 search "web search"
 h402 call web/search --name agent --json '{"query":"agent payments"}'
