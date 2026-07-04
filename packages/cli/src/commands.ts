@@ -230,7 +230,6 @@ export async function callCommand(args: ParsedArgs) {
   const method = resolveMethod(args.flags, body !== undefined);
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
   const token = config.sessions[apiUrl];
-  const { name, address: walletAddress } = await resolveSigningWallet(args, config);
   const path = buildProxyPath(routeId, query, provider);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
@@ -255,6 +254,7 @@ export async function callCommand(args: ParsedArgs) {
     return;
   }
 
+  const { name, address: walletAddress } = await resolveSigningWallet(args, config);
   const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
     createPaymentSignatureHeader({
       paymentRequired,
