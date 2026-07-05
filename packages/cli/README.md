@@ -79,9 +79,9 @@ before USDC unless you pass `--no-credit`.
 
 Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`address`/`balance`. The only exception is `wallet fund`, which opens an interactive deposit flow.
 
-A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <pagination/provider metadata>, "h402": <routing metadata> }` — read the upstream provider's payload from `data`; `meta` is optional and carries pagination/provider metadata when present; `h402` carries `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, and async `followUp` poll hints. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
+A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <pagination/provider metadata>, "h402": <routing metadata> }` — read the upstream provider's payload from `data`; `meta` is optional and carries pagination/provider metadata when present; `h402` carries `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, `paymentTransaction`, and async `followUp` poll hints. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
 
-Provider-specific fields (e.g. `limit` on `web/search`) are only accepted when you pin that provider with `--provider`; on the default `auto` route, pass just the canonical fields or the request is rejected.
+`web/search` accepts `limit` as a common canonical field on the default `auto` route. Truly provider-specific fields on other routes are only accepted when you pin the owning provider with `--provider`; otherwise pass just the canonical fields or the request is rejected.
 
 ```bash
 h402 search "token holders"                        # JSON to stdout

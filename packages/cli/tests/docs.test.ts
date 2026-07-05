@@ -13,13 +13,20 @@ const DOC_FILES: Record<string, string> = {
 
 describe("doc examples stay runnable against the catalog contract", () => {
   for (const [label, file] of Object.entries(DOC_FILES)) {
+    it(`${label}: docs do not describe web/search limit as provider-native`, () => {
+      // After h402-web#417/#415, `limit` is a common canonical field for web/search auto.
+      // Docs must not steer agents into unnecessary provider pinning for this field.
+      const text = readFileSync(file, "utf8");
+      expect(text).not.toMatch(/limit[^\n]+web\/search[^\n]+provider-specific/i);
+      expect(text).not.toMatch(/provider-specific[^\n]+limit[^\n]+web\/search/i);
+    });
+
     it(`${label}: web/search call examples send no provider-native field on the auto route`, () => {
-      // web/search's `limit` is provider-native: an unpinned (auto) example that sends it
-      // 422s on the first call (provider_native_field_requires_pinning). A documented call
-      // must omit it unless it also pins the owning provider with --provider.
+      // Auto examples may use canonical fields such as query/limit, but must not send
+      // documented provider-native fields unless they also pin the owning provider.
       const offenders = readFileSync(file, "utf8")
         .split("\n")
-        .filter((line) => line.includes("h402 call web/search") && line.includes("limit") && !line.includes("--provider"));
+        .filter((line) => line.includes("h402 call web/search") && line.includes("mode") && !line.includes("--provider"));
       expect(offenders).toEqual([]);
     });
 
@@ -27,6 +34,7 @@ describe("doc examples stay runnable against the catalog contract", () => {
       const text = readFileSync(file, "utf8");
       expect(text).toContain('"meta"?: <pagination/provider metadata>');
       expect(text).toContain("followUp");
+      expect(text).toContain("paymentTransaction");
       expect(text).not.toContain('{ "data": <provider result>, "h402": <routing metadata> }');
     });
   }
