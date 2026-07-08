@@ -37,9 +37,9 @@ h402 call web/search --name agent --json '{"query":"agent payments"}'
 
 The CLI targets the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` only when pointing at another backend such as local dev.
 
-The CLI signs locally through the [Open Wallet Standard](https://github.com/open-wallet-standard) and bundles the `ows` wallet binary, so a global install is self-contained — no separate wallet install needed. Override it with `H402_OWS_BIN` to use your own build.
+The CLI signs locally through [Open Wallet Standard](https://github.com/open-wallet-standard) core, so a global install is self-contained on supported platforms — no separate wallet install needed.
 
-OWS native bindings currently target macOS/Linux glibc on x64/arm64. Non-wallet commands (`--help`, `search`, `quote`) lazy-load OWS and still work without native bindings; wallet creation and payment signing require those JS native bindings. `H402_OWS_BIN` only overrides the standalone `ows` binary used by balance/funding commands on custom runtimes.
+OWS native bindings currently target macOS/Linux glibc on x64/arm64. Non-wallet commands (`--help`, `search`, `quote`) lazy-load OWS and still work without native bindings; wallet creation and payment signing require those JS native bindings.
 
 ## How it works
 

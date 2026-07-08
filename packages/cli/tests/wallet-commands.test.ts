@@ -3,7 +3,7 @@ import type { ParsedArgs } from "../src/utils";
 
 type MockCliConfig = { backendUrl: string; sessions: Record<string, string>; wallets: Record<string, { address?: string }> };
 
-const { runOwsCli, createOwsWallet, getOwsWallet, listOwsWallets, loadConfig, updateConfig, updatedConfigs, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => {
+const { createOwsWallet, getOwsWallet, listOwsWallets, getBaseUsdcBalance, loadConfig, updateConfig, updatedConfigs, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => {
   const updatedConfigs: MockCliConfig[] = [];
   const defaultConfig = (): MockCliConfig => ({
     backendUrl: "https://h402.hunt.town",
@@ -18,10 +18,10 @@ const { runOwsCli, createOwsWallet, getOwsWallet, listOwsWallets, loadConfig, up
     return draft;
   });
   return {
-    runOwsCli: vi.fn(async () => "{}"),
     createOwsWallet: vi.fn(),
     getOwsWallet: vi.fn(),
     listOwsWallets: vi.fn(),
+    getBaseUsdcBalance: vi.fn(async () => ({ microUsdc: "955900", usdc: "0.955900" })),
     loadConfig,
     updateConfig,
     updatedConfigs,
@@ -31,12 +31,17 @@ const { runOwsCli, createOwsWallet, getOwsWallet, listOwsWallets, loadConfig, up
 });
 
 vi.mock("../src/ows.js", () => ({
-  runOwsCli,
   createOwsWallet,
   getOwsWallet,
   listOwsWallets,
   signOwsMessage: vi.fn(),
   signOwsTypedData: vi.fn()
+}));
+
+vi.mock("../src/base-usdc-balance.js", () => ({
+  BASE_USDC_BALANCE_NETWORK: { name: "base", chainId: 8453 },
+  BASE_USDC_BALANCE_ASSET: { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", decimals: 6 },
+  getBaseUsdcBalance
 }));
 
 vi.mock("../src/config.js", () => ({
@@ -66,39 +71,39 @@ describe("walletCommand balance/fund wallet selection", () => {
     updatedConfigs.length = 0;
     getOwsWallet.mockReset();
     listOwsWallets.mockReset();
+    getBaseUsdcBalance.mockClear();
+    getBaseUsdcBalance.mockResolvedValue({ microUsdc: "955900", usdc: "0.955900" });
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   });
 
   afterEach(() => {
     stdout.mockRestore();
-    runOwsCli.mockClear();
   });
 
-  it("resolves --wallet to the owning wallet name for OWS (balance)", async () => {
+  it("resolves --wallet to the owning wallet address for balance", async () => {
     await walletCommand(args({ wallet: ADDR_ALT.toUpperCase() }, "balance"));
-    expect(runOwsCli).toHaveBeenCalledWith(["fund", "balance", "--wallet", "alt", "--chain", "base"]);
+    expect(getBaseUsdcBalance).toHaveBeenCalledWith(ADDR_ALT);
   });
 
   it("honors --name (balance)", async () => {
     await walletCommand(args({ name: "agent" }, "balance"));
-    expect(runOwsCli).toHaveBeenCalledWith(["fund", "balance", "--wallet", "agent", "--chain", "base"]);
+    expect(getBaseUsdcBalance).toHaveBeenCalledWith(ADDR_AGENT);
   });
 
-  it("wraps raw OWS balance output in a stable JSON envelope", async () => {
-    runOwsCli.mockResolvedValueOnce("   10.273934 USDC   $10.27       USDC");
+  it("prints structured Base USDC balance", async () => {
     await walletCommand(args({ name: "agent" }, "balance"));
     const written = stdout.mock.calls.map((call) => String(call[0])).join("");
     expect(JSON.parse(written)).toEqual({
       wallet: { name: "agent", address: ADDR_AGENT },
-      chain: "base",
-      balance: { raw: "   10.273934 USDC   $10.27       USDC" }
+      network: { name: "base", chainId: 8453 },
+      asset: { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", decimals: 6 },
+      balance: { microUsdc: "955900", usdc: "0.955900" }
     });
   });
 
   it("prints Base USDC funding instructions without invoking the broken OWS MoonPay flow", async () => {
     await walletCommand(args({ wallet: ADDR_AGENT }, "fund"));
 
-    expect(runOwsCli).not.toHaveBeenCalled();
     const written = stdout.mock.calls.map((call) => String(call[0])).join("");
     expect(JSON.parse(written)).toEqual({
       wallet: { name: "agent", address: ADDR_AGENT },
@@ -110,7 +115,7 @@ describe("walletCommand balance/fund wallet selection", () => {
 
   it("accepts --name and --wallet together when they agree", async () => {
     await walletCommand(args({ name: "alt", wallet: ADDR_ALT }, "balance"));
-    expect(runOwsCli).toHaveBeenCalledWith(["fund", "balance", "--wallet", "alt", "--chain", "base"]);
+    expect(getBaseUsdcBalance).toHaveBeenCalledWith(ADDR_ALT);
   });
 
   it("explains how to recover when create finds an existing OWS wallet name", async () => {
@@ -194,6 +199,6 @@ describe("walletCommand balance/fund wallet selection", () => {
 
   it("rejects --wallet that disagrees with --name before calling OWS", async () => {
     await expect(walletCommand(args({ name: "agent", wallet: ADDR_ALT }, "balance"))).rejects.toThrow(/does not match wallet "agent"/);
-    expect(runOwsCli).not.toHaveBeenCalled();
+    expect(getBaseUsdcBalance).not.toHaveBeenCalled();
   });
 });
