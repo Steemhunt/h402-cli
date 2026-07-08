@@ -79,9 +79,11 @@ before USDC unless you pass `--no-credit`.
 
 Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`address`/`balance`. The only exception is `wallet fund`, which opens an interactive deposit flow.
 
-A successful `call` is wrapped as `{ "data": <provider result>, "h402": <routing metadata> }` — read the upstream provider's payload from `data`; `h402` carries `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), and `ledgerEntryId`. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
+A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, optional `paymentTransaction`, and optional `followUp`. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
 
-Provider-specific fields (e.g. `limit` on `web/search`) are only accepted when you pin that provider with `--provider`; on the default `auto` route, pass just the canonical fields or the request is rejected.
+Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes.
+
+`web/search` accepts common fields such as `query` and `limit` on the default `auto` route. Provider-specific fields on other routes/candidates still require pinning the owning provider with `--provider`; otherwise auto-routing may reject the request.
 
 ```bash
 h402 search "token holders"                        # JSON to stdout

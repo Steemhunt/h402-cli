@@ -43,9 +43,11 @@ The CLI signs locally through the [Open Wallet Standard](https://github.com/open
 
 You call a task (`category/action`); the proxy answers with an x402 `402 PAYMENT-REQUIRED`; the CLI signs a Base USDC EIP-3009 authorization locally and retries — you pay the exact per-call price and get a canonical JSON response. Keys never leave your machine.
 
-A successful `call` prints `{ "data": <provider result>, "h402": <routing metadata> }`: the upstream provider's JSON is under `data`, and `h402` carries the resolved `provider`, `selectedCandidateId`, `routing`, `paidBy`, and `ledgerEntryId`. On failure the CLI exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is a human-readable diagnostic, and `detail` carries the backend's JSON error when the request reached the backend.
+A successful `call` prints `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }`: the upstream provider's JSON is under `data`; route-level normalized metadata may appear under `meta`; and `h402` carries `routeId`, `provider`, `selectedCandidateId`, `routing`, `paidBy`, `ledgerEntryId`, optional `paymentTransaction`, and optional `followUp` instructions. Do not discard `meta` — it is part of the route contract when present. On failure the CLI exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is a human-readable diagnostic, and `detail` carries the backend's JSON error when the request reached the backend.
 
-> `web/search` (and some other routes) accept provider-specific fields such as `limit` only when you pin the owning provider with `--provider`; on the default `auto` route, send just the canonical fields (e.g. `{"query":"..."}`) or auto-routing will reject the request.
+Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes.
+
+> `web/search` accepts common fields such as `query` and `limit` on the default `auto` route. Provider-specific fields on other routes/candidates still require pinning the owning provider with `--provider`; otherwise auto-routing may reject the request.
 
 ## Development
 
