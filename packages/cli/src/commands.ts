@@ -80,6 +80,10 @@ function isMissingOwsWalletError(error: unknown) {
   return error instanceof Error && /(?:not found|does not exist|no wallet|unknown wallet|wallet .* missing)/i.test(error.message);
 }
 
+function isExistingOwsWalletError(error: unknown) {
+  return error instanceof Error && /already exists/i.test(error.message);
+}
+
 async function adoptOwsWalletByName(name: string, config: CliConfig): Promise<ResolvedWallet | undefined> {
   try {
     const wallet = await getOwsWallet(name);
@@ -109,25 +113,28 @@ async function adoptOwsWalletByAddress(address: string, config: CliConfig): Prom
   return resolved;
 }
 
-async function listAndAdoptOwsWallets(config: CliConfig) {
+function normalizeOwsWallets(wallets: ResolvedWallet[]) {
+  return wallets.map((wallet) => ({ name: wallet.name, address: wallet.address.toLowerCase() }));
+}
+
+async function restoreOwsWallets(config: CliConfig) {
   const wallets = await listOwsWallets();
   let changed = false;
-  const listed = wallets.map((wallet) => {
-    const address = wallet.address.toLowerCase();
-    if (config.wallets[wallet.name]?.address?.toLowerCase() !== address) {
-      config.wallets[wallet.name] = { address };
+  const restored = normalizeOwsWallets(wallets);
+  for (const wallet of restored) {
+    if (config.wallets[wallet.name]?.address?.toLowerCase() !== wallet.address) {
+      config.wallets[wallet.name] = { address: wallet.address };
       changed = true;
     }
-    return { name: wallet.name, address };
-  });
+  }
   if (changed) {
     await updateConfig((current) => {
-      for (const wallet of listed) {
+      for (const wallet of restored) {
         current.wallets[wallet.name] = { address: wallet.address };
       }
     });
   }
-  return listed;
+  return restored;
 }
 
 // Resolve the wallet that will BOTH sign and own the request address, so the two
@@ -150,7 +157,7 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
         }
         return adopted;
       }
-      throw new Error(`No address known for wallet "${explicitName}". Run: h402 wallet create --name ${explicitName}, or h402 wallet list to re-adopt existing OWS wallets.`);
+      throw new Error(`No address known for wallet "${explicitName}". Run: h402 wallet create --name ${explicitName}, or h402 wallet restore to re-adopt existing OWS wallets.`);
     }
     if (explicitAddress && explicitAddress !== address) {
       throw new Error(`--wallet ${explicitAddress} does not match wallet "${explicitName}" (${address}). Omit --wallet or pass the wallet that owns this address.`);
@@ -163,7 +170,7 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
     if (!owner) {
       const adopted = await adoptOwsWalletByAddress(explicitAddress, config);
       if (adopted) return adopted;
-      throw new Error(`No local wallet owns address ${explicitAddress}. Create it (h402 wallet create), run h402 wallet list to re-adopt existing OWS wallets, or select one with --name.`);
+      throw new Error(`No local wallet owns address ${explicitAddress}. Create it (h402 wallet create), run h402 wallet restore to re-adopt existing OWS wallets, or select one with --name.`);
     }
     return { name: owner[0], address: explicitAddress };
   }
@@ -172,7 +179,7 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
   if (!address) {
     const adopted = await adoptOwsWalletByName(DEFAULT_WALLET_NAME, config);
     if (adopted) return adopted;
-    throw new Error(`No address known for wallet "${DEFAULT_WALLET_NAME}". Run: h402 wallet create --name ${DEFAULT_WALLET_NAME} (or pass --name/--wallet), or h402 wallet list to re-adopt existing OWS wallets.`);
+    throw new Error(`No address known for wallet "${DEFAULT_WALLET_NAME}". Run: h402 wallet create --name ${DEFAULT_WALLET_NAME} (or pass --name/--wallet), or h402 wallet restore to re-adopt existing OWS wallets.`);
   }
   return { name: DEFAULT_WALLET_NAME, address };
 }
@@ -183,7 +190,15 @@ export async function walletCommand(args: ParsedArgs) {
   const config = await loadConfig();
 
   if (subcommand === "create") {
-    const wallet = await createOwsWallet(name, await createPassphrase(args));
+    let wallet: ResolvedWallet;
+    try {
+      wallet = await createOwsWallet(name, await createPassphrase(args));
+    } catch (error) {
+      if (isExistingOwsWalletError(error)) {
+        throw new Error(`Wallet "${name}" already exists in the OWS vault. Run: h402 wallet address --name ${name} to re-adopt and print it, or h402 wallet restore to re-adopt all OWS wallets.`);
+      }
+      throw error;
+    }
     config.wallets[name] = { address: wallet.address };
     await updateConfig((current) => {
       current.wallets[name] = { address: wallet.address };
@@ -198,7 +213,12 @@ export async function walletCommand(args: ParsedArgs) {
   }
 
   if (subcommand === "list") {
-    printJson({ wallets: await listAndAdoptOwsWallets(config) });
+    printJson({ wallets: normalizeOwsWallets(await listOwsWallets()) });
+    return;
+  }
+
+  if (subcommand === "restore") {
+    printJson({ wallets: await restoreOwsWallets(config) });
     return;
   }
 

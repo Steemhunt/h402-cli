@@ -38,7 +38,7 @@ const FLAGS = {
 
 export const COMMANDS: Record<string, CommandSpec> = {
   wallet: {
-    usage: "h402 wallet <create|list|address|balance|fund> [flags]",
+    usage: "h402 wallet <create|list|restore|address|balance|fund> [flags]",
     summary: "Manage local non-custodial wallets",
     flags: [],
     subcommands: {
@@ -48,7 +48,8 @@ export const COMMANDS: Record<string, CommandSpec> = {
         flags: [FLAGS.name, FLAGS.passphrase, FLAGS.noPassphrase],
         examples: ["h402 wallet create --name agent"]
       },
-      list: { usage: "h402 wallet list", summary: "List OWS wallets and re-adopt them into h402 config", flags: [] },
+      list: { usage: "h402 wallet list", summary: "List OWS wallets", flags: [] },
+      restore: { usage: "h402 wallet restore", summary: "Re-adopt OWS wallets into h402 config", flags: [] },
       address: { usage: "h402 wallet address [flags]", summary: "Print a wallet address", flags: [FLAGS.name, FLAGS.wallet] },
       balance: {
         usage: "h402 wallet balance [flags]",

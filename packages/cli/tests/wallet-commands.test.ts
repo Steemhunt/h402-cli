@@ -105,6 +105,15 @@ describe("walletCommand balance/fund wallet selection", () => {
     expect(runOwsCli).toHaveBeenCalledWith(["fund", "balance", "--wallet", "alt", "--chain", "base"]);
   });
 
+  it("explains how to recover when create finds an existing OWS wallet name", async () => {
+    createOwsWallet.mockRejectedValueOnce(new Error("wallet name already exists: 'agent'"));
+
+    await expect(walletCommand(args({ name: "agent" }, "create"))).rejects.toThrow(
+      /Wallet "agent" already exists.*h402 wallet address --name agent.*h402 wallet restore/
+    );
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
   it("re-adopts an OWS wallet by name when the h402 config mapping is missing", async () => {
     const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
     loadConfig.mockResolvedValueOnce(config);
@@ -131,7 +140,25 @@ describe("walletCommand balance/fund wallet selection", () => {
     await expect(walletCommand(args({ name: "agent", wallet: ADDR_ALT }, "address"))).rejects.toThrow(/does not match wallet "agent"/);
   });
 
-  it("lists OWS wallets and re-adopts them into config", async () => {
+  it("lists OWS wallets without changing config", async () => {
+    listOwsWallets.mockResolvedValueOnce([
+      { name: "agent", address: ADDR_AGENT },
+      { name: "alt", address: ADDR_ALT.toUpperCase() }
+    ]);
+
+    await walletCommand(args({}, "list"));
+
+    expect(updateConfig).not.toHaveBeenCalled();
+    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(JSON.parse(written)).toEqual({
+      wallets: [
+        { name: "agent", address: ADDR_AGENT },
+        { name: "alt", address: ADDR_ALT }
+      ]
+    });
+  });
+
+  it("restores OWS wallets into config", async () => {
     const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
     loadConfig.mockResolvedValueOnce(config);
     listOwsWallets.mockResolvedValueOnce([
@@ -139,7 +166,7 @@ describe("walletCommand balance/fund wallet selection", () => {
       { name: "alt", address: ADDR_ALT.toUpperCase() }
     ]);
 
-    await walletCommand(args({}, "list"));
+    await walletCommand(args({}, "restore"));
 
     expect(updatedConfigs).toEqual([
       {
