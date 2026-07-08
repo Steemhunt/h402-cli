@@ -35,10 +35,15 @@ function isPlainObject(value: unknown): boolean {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+async function tightenConfigPermissions(file: string) {
+  await Promise.all([chmod(path.dirname(file), 0o700).catch(() => undefined), chmod(file, 0o600).catch(() => undefined)]);
+}
+
 async function readConfigFile(file: string): Promise<CliConfig | undefined> {
   let raw: string;
   try {
     raw = await readFile(file, "utf8");
+    await tightenConfigPermissions(file);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return undefined;
@@ -132,7 +137,7 @@ export async function saveConfig(config: CliConfig) {
   }
   // mkdir/write/rename modes are umask-masked, so tighten existing dir/file too.
   // Best-effort: a no-op on platforms without POSIX permissions.
-  await Promise.all([chmod(dir, 0o700).catch(() => undefined), chmod(file, 0o600).catch(() => undefined)]);
+  await tightenConfigPermissions(file);
 }
 
 export async function updateConfig(update: (config: CliConfig) => void | CliConfig | Promise<void | CliConfig>) {
@@ -149,7 +154,7 @@ export async function updateConfig(update: (config: CliConfig) => void | CliConf
   } finally {
     await releaseLock();
   }
-  await Promise.all([chmod(dir, 0o700).catch(() => undefined), chmod(file, 0o600).catch(() => undefined)]);
+  await tightenConfigPermissions(file);
   return next;
 }
 

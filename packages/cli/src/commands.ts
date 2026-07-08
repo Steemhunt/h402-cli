@@ -268,7 +268,7 @@ export async function authCommand(args: ParsedArgs) {
     current.backendUrl = apiUrl;
     current.sessions[apiUrl] = session.token;
   });
-  printJson({ session });
+  printJson({ session: { address: session.address, expiresAt: session.expiresAt } });
 }
 
 function searchLimit(flags: Record<string, string | boolean>) {
