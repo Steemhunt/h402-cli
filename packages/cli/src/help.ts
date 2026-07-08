@@ -39,7 +39,7 @@ const FLAGS = {
 
 export const COMMANDS: Record<string, CommandSpec> = {
   wallet: {
-    usage: "h402 wallet <create|address|balance|fund> [flags]",
+    usage: "h402 wallet <create|list|restore|address|balance|fund> [flags]",
     summary: "Manage local non-custodial wallets",
     flags: [],
     subcommands: {
@@ -49,6 +49,8 @@ export const COMMANDS: Record<string, CommandSpec> = {
         flags: [FLAGS.name, FLAGS.passphrase, FLAGS.noPassphrase],
         examples: ["h402 wallet create --name agent"]
       },
+      list: { usage: "h402 wallet list", summary: "List OWS wallets", flags: [] },
+      restore: { usage: "h402 wallet restore", summary: "Re-adopt OWS wallets into h402 config", flags: [] },
       address: { usage: "h402 wallet address [flags]", summary: "Print a wallet address", flags: [FLAGS.name, FLAGS.wallet] },
       balance: {
         usage: "h402 wallet balance [flags]",
@@ -56,7 +58,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
         flags: [FLAGS.name, FLAGS.wallet],
         examples: ["h402 wallet balance --name agent"]
       },
-      fund: { usage: "h402 wallet fund [flags]", summary: "Open the OWS deposit flow to fund a wallet", flags: [FLAGS.name, FLAGS.wallet] }
+      fund: { usage: "h402 wallet fund [flags]", summary: "Print the Base USDC deposit address for a wallet", flags: [FLAGS.name, FLAGS.wallet] }
     }
   },
   auth: {
@@ -100,7 +102,6 @@ export const COMMANDS: Record<string, CommandSpec> = {
 
 const ENV_VARS: [string, string][] = [
   ["H402_API_URL", "Backend base URL override (or --api-url)"],
-  ["H402_OWS_BIN", "Path to the OWS binary (defaults to the bundled copy, then PATH)"],
   ["H402_WALLET_PASSPHRASE", "Passphrase for passphrase-protected wallets (only needed when the wallet was created with one)"]
 ];
 

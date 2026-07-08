@@ -14,13 +14,14 @@ const { loadConfig, signOwsTypedData } = vi.hoisted(() => {
 
 vi.mock("../src/config.js", () => ({
   loadConfig,
-  saveConfig: vi.fn(),
+  updateConfig: vi.fn(),
   backendUrl: () => "https://test.example"
 }));
 
 vi.mock("../src/ows.js", () => ({
   createOwsWallet: vi.fn(),
-  runOwsCli: vi.fn(),
+  getOwsWallet: vi.fn(),
+  listOwsWallets: vi.fn(),
   signOwsMessage: vi.fn(),
   signOwsTypedData
 }));

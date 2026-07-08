@@ -1,11 +1,23 @@
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import path from "node:path";
-import { createWallet, signMessage, signTypedData, type WalletInfo } from "@open-wallet-standard/core";
+import type { WalletInfo } from "@open-wallet-standard/core";
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const HEX_SIGNATURE_PATTERN = /^(0x)?[a-fA-F0-9]+$/;
+
+type OwsCore = typeof import("@open-wallet-standard/core");
+let owsCorePromise: Promise<OwsCore> | undefined;
+
+async function loadOwsCore(): Promise<OwsCore> {
+  try {
+    owsCorePromise ??= import("@open-wallet-standard/core");
+    return await owsCorePromise;
+  } catch (error) {
+    owsCorePromise = undefined;
+    throw new Error(
+      `OWS wallet native bindings are unavailable on this platform: ${error instanceof Error ? error.message : String(error)}. ` +
+        "Non-wallet commands such as --help/search/quote can still run. Wallet creation and payment signing require @open-wallet-standard/core native bindings on macOS/Linux glibc x64/arm64."
+    );
+  }
+}
 
 export function getEvmAddress(wallet: WalletInfo) {
   const account =
@@ -21,8 +33,20 @@ export function getEvmAddress(wallet: WalletInfo) {
 }
 
 export async function createOwsWallet(name: string, passphrase?: string) {
+  const { createWallet } = await loadOwsCore();
   const wallet = createWallet(name, passphrase);
   return { name, address: getEvmAddress(wallet), wallet };
+}
+
+export async function getOwsWallet(name: string) {
+  const { getWallet } = await loadOwsCore();
+  const wallet = getWallet(name);
+  return { name: wallet.name, address: getEvmAddress(wallet), wallet };
+}
+
+export async function listOwsWallets() {
+  const { listWallets } = await loadOwsCore();
+  return listWallets().map((wallet) => ({ name: wallet.name, address: getEvmAddress(wallet), wallet }));
 }
 
 export function normalizeOwsSignature(signature: string, recoveryId?: number) {
@@ -44,84 +68,13 @@ export function normalizeOwsSignature(signature: string, recoveryId?: number) {
 }
 
 export async function signOwsMessage(walletName: string, message: string, passphrase?: string) {
+  const { signMessage } = await loadOwsCore();
   const result = signMessage(walletName, "base", message, passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
 }
 
 export async function signOwsTypedData(walletName: string, typedData: unknown, passphrase?: string) {
+  const { signTypedData } = await loadOwsCore();
   const result = signTypedData(walletName, "base", JSON.stringify(typedData), passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
-}
-
-// `npm install -g @h402/cli` installs @open-wallet-standard/core (and its `ows`
-// binary) into the dependency tree, but npm only links the *top-level* package's
-// bin onto PATH — so bare `ows` is usually missing after a global install. Locate
-// the bundled binary so wallet commands work out of the box.
-function bundledOwsBinary(): string | null {
-  try {
-    const require = createRequire(import.meta.url);
-    const packageJsonPath = require.resolve("@open-wallet-standard/core/package.json");
-    const manifest = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { bin?: string | Record<string, string> };
-    const binRelative = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.ows;
-    if (!binRelative) {
-      return null;
-    }
-    const binPath = path.join(path.dirname(packageJsonPath), binRelative);
-    return existsSync(binPath) ? binPath : null;
-  } catch {
-    return null;
-  }
-}
-
-// Resolve how to invoke OWS: an explicit H402_OWS_BIN wins; otherwise prefer the
-// bundled wrapper (run with the current Node so the `#!/usr/bin/env node` shim is
-// not needed on PATH); fall back to bare `ows` on PATH only when the bundled
-// wrapper file is absent. Note: the bundled wrapper resolves its own native
-// binary at run time, so if that platform binary is missing (e.g. an
-// `--omit=optional` install) the wrapper errors rather than falling back — set
-// H402_OWS_BIN to a working `ows` in that case.
-export function resolveOwsInvocation(): { command: string; prefixArgs: string[] } {
-  const override = process.env.H402_OWS_BIN;
-  if (override) {
-    return { command: override, prefixArgs: [] };
-  }
-  const bundled = bundledOwsBinary();
-  if (bundled) {
-    return { command: process.execPath, prefixArgs: [bundled] };
-  }
-  return { command: "ows", prefixArgs: [] };
-}
-
-export function runOwsCli(args: string[]) {
-  const { command, prefixArgs } = resolveOwsInvocation();
-  return new Promise<string>((resolve, reject) => {
-    const child = spawn(command, [...prefixArgs, ...args], { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (error) => {
-      const code = (error as NodeJS.ErrnoException).code;
-      reject(
-        new Error(
-          `Could not run the OWS wallet binary${code ? ` (${code})` : ""}. Set H402_OWS_BIN to an absolute 'ows' path, ` +
-            "or reinstall @h402/cli so its bundled OWS binary is available (e.g. without --omit=optional)."
-        )
-      );
-    });
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-      } else {
-        reject(new Error(stderr.trim() || `ows exited with code ${code}`));
-      }
-    });
-  });
 }
