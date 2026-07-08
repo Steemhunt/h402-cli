@@ -1,26 +1,47 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedArgs } from "../src/utils";
 
-const { runOwsCli, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => ({
-  runOwsCli: vi.fn(async () => "{}"),
-  ADDR_AGENT: "0x1111111111111111111111111111111111111111",
-  ADDR_ALT: "0x2222222222222222222222222222222222222222"
-}));
+type MockCliConfig = { backendUrl: string; sessions: Record<string, string>; wallets: Record<string, { address?: string }> };
+
+const { runOwsCli, createOwsWallet, getOwsWallet, listOwsWallets, loadConfig, updateConfig, updatedConfigs, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => {
+  const updatedConfigs: MockCliConfig[] = [];
+  const defaultConfig = (): MockCliConfig => ({
+    backendUrl: "https://h402.hunt.town",
+    sessions: {},
+    wallets: { agent: { address: "0x1111111111111111111111111111111111111111" }, alt: { address: "0x2222222222222222222222222222222222222222" } }
+  });
+  const loadConfig = vi.fn(async () => defaultConfig());
+  const updateConfig = vi.fn(async (updater: (config: MockCliConfig) => void | Promise<void>) => {
+    const draft: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
+    await updater(draft);
+    updatedConfigs.push(draft);
+    return draft;
+  });
+  return {
+    runOwsCli: vi.fn(async () => "{}"),
+    createOwsWallet: vi.fn(),
+    getOwsWallet: vi.fn(),
+    listOwsWallets: vi.fn(),
+    loadConfig,
+    updateConfig,
+    updatedConfigs,
+    ADDR_AGENT: "0x1111111111111111111111111111111111111111",
+    ADDR_ALT: "0x2222222222222222222222222222222222222222"
+  };
+});
 
 vi.mock("../src/ows.js", () => ({
   runOwsCli,
-  createOwsWallet: vi.fn(),
+  createOwsWallet,
+  getOwsWallet,
+  listOwsWallets,
   signOwsMessage: vi.fn(),
   signOwsTypedData: vi.fn()
 }));
 
 vi.mock("../src/config.js", () => ({
-  loadConfig: vi.fn(async () => ({
-    backendUrl: "https://h402.hunt.town",
-    sessions: {},
-    wallets: { agent: { address: ADDR_AGENT }, alt: { address: ADDR_ALT } }
-  })),
-  saveConfig: vi.fn(),
+  loadConfig,
+  updateConfig,
   backendUrl: () => "https://h402.hunt.town"
 }));
 
@@ -36,6 +57,15 @@ describe("walletCommand balance/fund wallet selection", () => {
   let stdout: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    loadConfig.mockResolvedValue({
+      backendUrl: "https://h402.hunt.town",
+      sessions: {},
+      wallets: { agent: { address: ADDR_AGENT }, alt: { address: ADDR_ALT } }
+    });
+    updateConfig.mockClear();
+    updatedConfigs.length = 0;
+    getOwsWallet.mockReset();
+    listOwsWallets.mockReset();
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   });
 
@@ -73,6 +103,85 @@ describe("walletCommand balance/fund wallet selection", () => {
   it("accepts --name and --wallet together when they agree", async () => {
     await walletCommand(args({ name: "alt", wallet: ADDR_ALT }, "balance"));
     expect(runOwsCli).toHaveBeenCalledWith(["fund", "balance", "--wallet", "alt", "--chain", "base"]);
+  });
+
+  it("explains how to recover when create finds an existing OWS wallet name", async () => {
+    createOwsWallet.mockRejectedValueOnce(new Error("wallet name already exists: 'agent'"));
+
+    await expect(walletCommand(args({ name: "agent" }, "create"))).rejects.toThrow(
+      /Wallet "agent" already exists.*h402 wallet address --name agent.*h402 wallet restore/
+    );
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("re-adopts an OWS wallet by name when the h402 config mapping is missing", async () => {
+    const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
+    loadConfig.mockResolvedValueOnce(config);
+    getOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_AGENT });
+
+    await walletCommand(args({ name: "agent" }, "address"));
+
+    expect(updatedConfigs).toEqual([
+      {
+        backendUrl: "https://h402.hunt.town",
+        sessions: {},
+        wallets: { agent: { address: ADDR_AGENT } }
+      }
+    ]);
+    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(JSON.parse(written)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
+  });
+
+  it("rejects --wallet mismatches even after re-adopting an OWS wallet by name", async () => {
+    const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
+    loadConfig.mockResolvedValueOnce(config);
+    getOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_AGENT });
+
+    await expect(walletCommand(args({ name: "agent", wallet: ADDR_ALT }, "address"))).rejects.toThrow(/does not match wallet "agent"/);
+  });
+
+  it("lists OWS wallets without changing config", async () => {
+    listOwsWallets.mockResolvedValueOnce([
+      { name: "agent", address: ADDR_AGENT },
+      { name: "alt", address: ADDR_ALT.toUpperCase() }
+    ]);
+
+    await walletCommand(args({}, "list"));
+
+    expect(updateConfig).not.toHaveBeenCalled();
+    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(JSON.parse(written)).toEqual({
+      wallets: [
+        { name: "agent", address: ADDR_AGENT },
+        { name: "alt", address: ADDR_ALT }
+      ]
+    });
+  });
+
+  it("restores OWS wallets into config", async () => {
+    const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
+    loadConfig.mockResolvedValueOnce(config);
+    listOwsWallets.mockResolvedValueOnce([
+      { name: "agent", address: ADDR_AGENT },
+      { name: "alt", address: ADDR_ALT.toUpperCase() }
+    ]);
+
+    await walletCommand(args({}, "restore"));
+
+    expect(updatedConfigs).toEqual([
+      {
+        backendUrl: "https://h402.hunt.town",
+        sessions: {},
+        wallets: { agent: { address: ADDR_AGENT }, alt: { address: ADDR_ALT } }
+      }
+    ]);
+    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(JSON.parse(written)).toEqual({
+      wallets: [
+        { name: "agent", address: ADDR_AGENT },
+        { name: "alt", address: ADDR_ALT }
+      ]
+    });
   });
 
   it("rejects --wallet that disagrees with --name before calling OWS", async () => {

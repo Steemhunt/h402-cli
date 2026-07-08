@@ -2,24 +2,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
 
-const { saveConfig, signOwsMessage, ADDR } = vi.hoisted(() => ({
-  saveConfig: vi.fn(),
-  signOwsMessage: vi.fn(async () => "0xsigned"),
-  ADDR: "0x1111111111111111111111111111111111111111"
-}));
-
-vi.mock("../src/config.js", () => ({
-  loadConfig: vi.fn(async (): Promise<CliConfig> => ({
+const { loadConfig, updateConfig, signOwsMessage, updatedConfigs, ADDR } = vi.hoisted(() => {
+  const ADDR = "0x1111111111111111111111111111111111111111";
+  const updatedConfigs: CliConfig[] = [];
+  const config = (): CliConfig => ({
     backendUrl: "https://test.example",
     sessions: {},
     wallets: { h402: { address: ADDR } }
-  })),
-  saveConfig,
+  });
+  const loadConfig = vi.fn(async () => config());
+  const updateConfig = vi.fn(async (update: (config: CliConfig) => void | CliConfig | Promise<void | CliConfig>) => {
+    const draft = config();
+    const next = (await update(draft)) ?? draft;
+    updatedConfigs.push(next);
+    return next;
+  });
+
+  return {
+    loadConfig,
+    updateConfig,
+    signOwsMessage: vi.fn(async () => "0xsigned"),
+    updatedConfigs,
+    ADDR
+  };
+});
+
+vi.mock("../src/config.js", () => ({
+  loadConfig,
+  updateConfig,
   backendUrl: () => "https://test.example"
 }));
 
 vi.mock("../src/ows.js", () => ({
   createOwsWallet: vi.fn(),
+  getOwsWallet: vi.fn(async () => ({ name: "h402", address: ADDR })),
+  listOwsWallets: vi.fn(async () => []),
   runOwsCli: vi.fn(),
   signOwsMessage,
   signOwsTypedData: vi.fn()
@@ -44,8 +61,10 @@ describe("authCommand", () => {
   let stdout: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    saveConfig.mockClear();
+    loadConfig.mockClear();
+    updateConfig.mockClear();
     signOwsMessage.mockClear();
+    updatedConfigs.length = 0;
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     vi.stubGlobal(
       "fetch",
@@ -64,7 +83,8 @@ describe("authCommand", () => {
   it("persists but does not print the bearer token", async () => {
     await authCommand(args());
 
-    expect(saveConfig).toHaveBeenCalledWith(expect.objectContaining({ sessions: { "https://test.example": "secret-token" } }));
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updatedConfigs[0]).toEqual(expect.objectContaining({ sessions: { "https://test.example": "secret-token" } }));
     const calls = stdout.mock.calls as unknown[][];
     const written = calls.map((call) => String(call[0])).join("");
     expect(written).toContain(ADDR);

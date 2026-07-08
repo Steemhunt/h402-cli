@@ -1,6 +1,8 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 export type CliConfig = {
   backendUrl: string;
@@ -20,21 +22,31 @@ function defaultConfig(): CliConfig {
   return { backendUrl: process.env.H402_API_URL ?? DEFAULT_BACKEND_URL, sessions: {}, wallets: {} };
 }
 
+function normalizeConfig(parsed: Record<string, unknown>): CliConfig {
+  const defaults = defaultConfig();
+  return {
+    backendUrl: typeof parsed.backendUrl === "string" ? parsed.backendUrl : defaults.backendUrl,
+    sessions: isPlainObject(parsed.sessions) ? (parsed.sessions as Record<string, string>) : {},
+    wallets: isPlainObject(parsed.wallets) ? (parsed.wallets as CliConfig["wallets"]) : {}
+  };
+}
+
+function isPlainObject(value: unknown): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function tightenConfigPermissions(file: string) {
   await Promise.all([chmod(path.dirname(file), 0o700).catch(() => undefined), chmod(file, 0o600).catch(() => undefined)]);
 }
 
-export async function loadConfig(): Promise<CliConfig> {
-  const file = configPath();
+async function readConfigFile(file: string): Promise<CliConfig | undefined> {
   let raw: string;
   try {
     raw = await readFile(file, "utf8");
     await tightenConfigPermissions(file);
   } catch (error) {
-    // A missing file is a normal first run. Any other read error (permissions,
-    // I/O) must surface, not be masked by silently starting from defaults.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return defaultConfig();
+      return undefined;
     }
     throw new Error(`Could not read h402 config at ${file}: ${(error as Error).message}`);
   }
@@ -53,17 +65,62 @@ export async function loadConfig(): Promise<CliConfig> {
   // Normalize to the CliConfig shape so a sparse or partial file (e.g. `{}` or a
   // missing/mistyped sessions/wallets key) yields a usable config instead of
   // crashing later when a command reads config.sessions / config.wallets.
-  const config = parsed as Record<string, unknown>;
-  const defaults = defaultConfig();
+  return normalizeConfig(parsed as Record<string, unknown>);
+}
+
+export async function loadConfig(): Promise<CliConfig> {
+  return (await readConfigFile(configPath())) ?? defaultConfig();
+}
+
+async function acquireConfigLock(dir: string) {
+  const lockDir = path.join(dir, ".config.lock");
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      await mkdir(lockDir, { mode: 0o700 });
+      return async () => {
+        await rm(lockDir, { recursive: true, force: true });
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+      await delay(25);
+    }
+  }
+  throw new Error(`Timed out waiting for h402 config lock at ${lockDir}`);
+}
+
+function cloneConfig(config: CliConfig): CliConfig {
   return {
-    backendUrl: typeof config.backendUrl === "string" ? config.backendUrl : defaults.backendUrl,
-    sessions: isPlainObject(config.sessions) ? (config.sessions as Record<string, string>) : {},
-    wallets: isPlainObject(config.wallets) ? (config.wallets as CliConfig["wallets"]) : {}
+    backendUrl: config.backendUrl,
+    sessions: { ...config.sessions },
+    wallets: Object.fromEntries(Object.entries(config.wallets).map(([name, wallet]) => [name, { ...wallet }]))
   };
 }
 
-function isPlainObject(value: unknown): boolean {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function mergeConfigForSave(existing: CliConfig | undefined, next: CliConfig): CliConfig {
+  if (!existing) return next;
+  return {
+    backendUrl: existing.backendUrl || next.backendUrl,
+    // saveConfig receives full snapshots from some callers/tests. Preserve values
+    // already written under the lock on key collisions so a stale snapshot cannot
+    // roll back an unrelated session or wallet update; command code uses
+    // updateConfig() for intentional replacements.
+    sessions: { ...next.sessions, ...existing.sessions },
+    wallets: { ...next.wallets, ...existing.wallets }
+  };
+}
+
+async function atomicWritePrivateJson(file: string, config: CliConfig) {
+  const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tmp, JSON.stringify(config, null, 2), { mode: 0o600, flag: "wx" });
+    await chmod(tmp, 0o600).catch(() => undefined);
+    await rename(tmp, file);
+  } catch (error) {
+    await rm(tmp, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function saveConfig(config: CliConfig) {
@@ -71,11 +128,34 @@ export async function saveConfig(config: CliConfig) {
   const dir = path.dirname(file);
   // The config holds session tokens and wallet mappings — keep it user-private.
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  await writeFile(file, JSON.stringify(config, null, 2), { mode: 0o600 });
-  // mkdir/writeFile modes are umask-masked and the file mode only applies on
-  // create, so tighten existing dir/file too. Best-effort: a no-op on platforms
-  // without POSIX permissions.
+  const releaseLock = await acquireConfigLock(dir);
+  try {
+    const merged = mergeConfigForSave(await readConfigFile(file), config);
+    await atomicWritePrivateJson(file, merged);
+  } finally {
+    await releaseLock();
+  }
+  // mkdir/write/rename modes are umask-masked, so tighten existing dir/file too.
+  // Best-effort: a no-op on platforms without POSIX permissions.
   await tightenConfigPermissions(file);
+}
+
+export async function updateConfig(update: (config: CliConfig) => void | CliConfig | Promise<void | CliConfig>) {
+  const file = configPath();
+  const dir = path.dirname(file);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const releaseLock = await acquireConfigLock(dir);
+  let next: CliConfig;
+  try {
+    const current = (await readConfigFile(file)) ?? defaultConfig();
+    const draft = cloneConfig(current);
+    next = (await update(draft)) ?? draft;
+    await atomicWritePrivateJson(file, next);
+  } finally {
+    await releaseLock();
+  }
+  await tightenConfigPermissions(file);
+  return next;
 }
 
 export function backendUrl(config: CliConfig, apiUrlFlag?: string) {

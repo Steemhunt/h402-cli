@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { createWallet, signMessage, signTypedData, type WalletInfo } from "@open-wallet-standard/core";
+import { createWallet, getWallet, listWallets, signMessage, signTypedData, type WalletInfo } from "@open-wallet-standard/core";
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const HEX_SIGNATURE_PATTERN = /^(0x)?[a-fA-F0-9]+$/;
@@ -23,6 +23,15 @@ export function getEvmAddress(wallet: WalletInfo) {
 export async function createOwsWallet(name: string, passphrase?: string) {
   const wallet = createWallet(name, passphrase);
   return { name, address: getEvmAddress(wallet), wallet };
+}
+
+export async function getOwsWallet(name: string) {
+  const wallet = getWallet(name);
+  return { name: wallet.name, address: getEvmAddress(wallet), wallet };
+}
+
+export async function listOwsWallets() {
+  return listWallets().map((wallet) => ({ name: wallet.name, address: getEvmAddress(wallet), wallet }));
 }
 
 export function normalizeOwsSignature(signature: string, recoveryId?: number) {
