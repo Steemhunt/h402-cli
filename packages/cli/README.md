@@ -21,7 +21,7 @@ npm install -g @h402/cli
 
 ```bash
 h402 wallet create --name agent                      # local wallet (passphrase-less by default)
-h402 wallet fund --name agent                        # or send Base USDC to the address
+h402 wallet fund --name agent                        # prints the Base USDC address + instructions
 h402 wallet list                                     # inspect local OWS wallets
 h402 wallet restore                                  # re-adopt existing OWS wallets into config
 h402 call web/search --name agent --json '{"query":"agent APIs"}'
@@ -38,7 +38,7 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | `h402 wallet restore` | Re-adopt OWS wallets into `~/.h402/config.json` |
 | `h402 wallet address --name <n>` | Print the wallet address |
 | `h402 wallet balance --name <n>` | Show the wallet's Base USDC balance (JSON envelope) |
-| `h402 wallet fund --name <n>` | Open the interactive OWS deposit flow (human, not JSON) |
+| `h402 wallet fund --name <n>` | Print the Base USDC deposit address and funding instructions |
 | `h402 auth --name <n>` | Sign in to a backend with a wallet signature (enables bonus credits) |
 | `h402 credits` | Show the bonus-credit balance for the signed-in session |
 | `h402 search <query>` | Search the catalog (JSON results) |
@@ -83,7 +83,7 @@ before USDC unless you pass `--no-credit`.
 
 ## Agents & automation
 
-Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`. The only exception is `wallet fund`, which opens an interactive deposit flow.
+Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
 
 A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, optional `paymentTransaction`, and optional `followUp`. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
 

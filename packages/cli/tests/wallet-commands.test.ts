@@ -95,9 +95,17 @@ describe("walletCommand balance/fund wallet selection", () => {
     });
   });
 
-  it("resolves --wallet to the owning wallet name for OWS (fund)", async () => {
+  it("prints Base USDC funding instructions without invoking the broken OWS MoonPay flow", async () => {
     await walletCommand(args({ wallet: ADDR_AGENT }, "fund"));
-    expect(runOwsCli).toHaveBeenCalledWith(["fund", "deposit", "--wallet", "agent", "--chain", "8453", "--token", "USDC"]);
+
+    expect(runOwsCli).not.toHaveBeenCalled();
+    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
+    expect(JSON.parse(written)).toEqual({
+      wallet: { name: "agent", address: ADDR_AGENT },
+      network: "base",
+      token: "USDC",
+      instructions: "Send Base USDC to this address from an exchange, bridge, or another wallet, then run h402 wallet balance --name agent."
+    });
   });
 
   it("accepts --name and --wallet together when they agree", async () => {
