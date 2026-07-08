@@ -10,7 +10,7 @@ vi.mock("../src/config.js", () => ({
   backendUrl: () => "https://test.example"
 }));
 
-const { quoteCommand, callCommand } = await import("../src/commands");
+const { quoteCommand, callCommand, searchCommand } = await import("../src/commands");
 
 function res(status: number, body: unknown, headers: Record<string, string> = {}) {
   return { status, text: async () => (body === undefined ? "" : JSON.stringify(body)), headers: new Headers(headers) };
@@ -20,8 +20,8 @@ function stubFetch(status: number, body: unknown, headers: Record<string, string
   vi.stubGlobal("fetch", vi.fn(async () => res(status, body, headers)));
 }
 
-function args(routeId: string): ParsedArgs {
-  return { positional: ["cmd", routeId], flags: {} };
+function args(routeId: string, flags: ParsedArgs["flags"] = {}): ParsedArgs {
+  return { positional: ["cmd", routeId], flags };
 }
 
 const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", asset: "0x", amount: "1", payTo: "0x", maxTimeoutSeconds: 60 }] };
@@ -85,5 +85,33 @@ describe("quote/call exit codes on backend responses", () => {
     const error = await callCommand(args("web/search")).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(CliError);
     expect(errorEnvelope(error)).toEqual({ error: { message: "Request failed: 422: pin it", detail: backend } });
+  });
+
+  it("rejects --query with a POST body before sending a quote request", async () => {
+    const fetch = vi.fn(async () => res(200, { result: 42 }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(quoteCommand(args("web/search", { json: '{"query":"h402"}', query: '{"limit":5}' }))).rejects.toThrow(/--query cannot be combined with POST/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects --query with an explicit POST call before resolving payment", async () => {
+    const fetch = vi.fn(async () => res(200, { result: 42 }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(callCommand(args("web/search", { method: "POST", query: '{"limit":5}' }))).rejects.toThrow(/--query cannot be combined with POST/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("builds catalog search URLs with URLSearchParams", async () => {
+    const fetch = vi.fn(async () => res(200, { results: [] }));
+    vi.stubGlobal("fetch", fetch);
+    await searchCommand({ positional: ["search", "web search"], flags: { limit: "5" } });
+    expect(String(fetch.mock.calls[0][0])).toBe("https://test.example/api/catalog/search?q=web+search&limit=5");
+  });
+
+  it("rejects injected search limits before sending a request", async () => {
+    const fetch = vi.fn(async () => res(200, { results: [] }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(searchCommand({ positional: ["search", "web"], flags: { limit: "5&q=evil" } })).rejects.toThrow(/--limit must be a positive integer/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
