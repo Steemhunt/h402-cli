@@ -13,9 +13,9 @@ Building an AI agent? See [`SKILL.md`](../../SKILL.md) for an agent-ready walkth
 npm install -g @h402/cli
 ```
 
-> The `ows` wallet binary ([Open Wallet Standard](https://github.com/open-wallet-standard)) ships with the CLI, so a global install is self-contained. To use your own build instead, set `H402_OWS_BIN=/absolute/path/to/ows`.
+> The [Open Wallet Standard](https://github.com/open-wallet-standard) core library ships with the CLI, so a global install is self-contained on supported platforms.
 >
-> OWS native bindings currently target macOS/Linux glibc on x64/arm64. Non-wallet commands (`--help`, `search`, `quote`) lazy-load OWS and still work without native bindings; wallet creation and payment signing require those JS native bindings. `H402_OWS_BIN` only overrides the standalone `ows` binary used by balance/funding commands on custom runtimes.
+> OWS native bindings currently target macOS/Linux glibc on x64/arm64. Non-wallet commands (`--help`, `search`, `quote`) lazy-load OWS and still work without native bindings; wallet creation and payment signing require those JS native bindings.
 
 ## Quickstart
 
@@ -37,7 +37,7 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | `h402 wallet list` | List OWS wallets |
 | `h402 wallet restore` | Re-adopt OWS wallets into `~/.h402/config.json` |
 | `h402 wallet address --name <n>` | Print the wallet address |
-| `h402 wallet balance --name <n>` | Show the wallet's Base USDC balance (JSON envelope) |
+| `h402 wallet balance --name <n>` | Show the wallet's structured Base USDC balance |
 | `h402 wallet fund --name <n>` | Print the Base USDC deposit address and funding instructions |
 | `h402 auth --name <n>` | Sign in to a backend with a wallet signature (enables bonus credits) |
 | `h402 credits` | Show the bonus-credit balance for the signed-in session |
@@ -104,7 +104,6 @@ Signing needs no flags for the default passphrase-less wallets. Only when a wall
 | Variable | Purpose |
 | --- | --- |
 | `H402_API_URL` | Backend base URL override (or `--api-url`; default `https://h402.hunt.town`) |
-| `H402_OWS_BIN` | Absolute path to an `ows` binary, overriding the copy bundled with the CLI |
 | `H402_WALLET_PASSPHRASE` | Passphrase for passphrase-protected wallets (only needed when the wallet was created with one) |
 
 Passphrases are never stored. Wallets are passphrase-less by default; opt in at create time (`--passphrase <s>`, or bare `--passphrase` to be prompted) when a wallet guards meaningful funds. The CLI persists only the backend URL, session tokens, and known wallet addresses in `~/.h402/config.json`.

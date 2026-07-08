@@ -100,7 +100,6 @@ export const COMMANDS: Record<string, CommandSpec> = {
 
 const ENV_VARS: [string, string][] = [
   ["H402_API_URL", "Backend base URL override (or --api-url)"],
-  ["H402_OWS_BIN", "Path to the OWS binary (defaults to the bundled copy, then PATH)"],
   ["H402_WALLET_PASSPHRASE", "Passphrase for passphrase-protected wallets (only needed when the wallet was created with one)"]
 ];
 

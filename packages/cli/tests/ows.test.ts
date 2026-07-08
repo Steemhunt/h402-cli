@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
-import { getEvmAddress, normalizeOwsSignature, resolveOwsInvocation } from "../src/ows";
+import { describe, expect, it } from "vitest";
+import { getEvmAddress, normalizeOwsSignature } from "../src/ows";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const owsSource = readFileSync(path.join(here, "..", "src", "ows.ts"), "utf8");
@@ -94,30 +94,5 @@ describe("normalizeOwsSignature", () => {
 
   it("rejects malformed signatures", () => {
     expect(() => normalizeOwsSignature("not-a-signature")).toThrow("non-hex");
-  });
-});
-
-describe("resolveOwsInvocation", () => {
-  const saved = process.env.H402_OWS_BIN;
-
-  afterEach(() => {
-    if (saved === undefined) {
-      delete process.env.H402_OWS_BIN;
-    } else {
-      process.env.H402_OWS_BIN = saved;
-    }
-  });
-
-  it("uses H402_OWS_BIN verbatim when set", () => {
-    process.env.H402_OWS_BIN = "/custom/path/ows";
-    expect(resolveOwsInvocation()).toEqual({ command: "/custom/path/ows", prefixArgs: [] });
-  });
-
-  it("runs the bundled @open-wallet-standard/core binary with the current node", () => {
-    delete process.env.H402_OWS_BIN;
-    const { command, prefixArgs } = resolveOwsInvocation();
-    expect(command).toBe(process.execPath);
-    expect(prefixArgs).toHaveLength(1);
-    expect(prefixArgs[0]).toMatch(/@open-wallet-standard[/\\]core[/\\]bin[/\\]ows$/);
   });
 });

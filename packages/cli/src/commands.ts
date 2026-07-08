@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { assertOk, requestJson } from "./api.js";
+import { BASE_USDC_BALANCE_ASSET, BASE_USDC_BALANCE_NETWORK, getBaseUsdcBalance } from "./base-usdc-balance.js";
 import { backendUrl, loadConfig, updateConfig, type CliConfig } from "./config.js";
-import { createOwsWallet, getOwsWallet, listOwsWallets, runOwsCli, signOwsMessage } from "./ows.js";
+import { createOwsWallet, getOwsWallet, listOwsWallets, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
 import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, type ParsedArgs } from "./utils.js";
 import { createPaymentSignatureHeader, paymentRequiredFromResponse, X402_HEADERS } from "./x402.js";
@@ -223,14 +224,13 @@ export async function walletCommand(args: ParsedArgs) {
   }
 
   if (subcommand === "balance") {
-    // OWS keys wallets by name; resolve --name/--wallet to the owning wallet so
-    // `--wallet 0x...` selects the same wallet here as it does for signing.
     const { name: signingName, address } = await resolveSigningWallet(args, config);
-    // OWS prints a human balance table; wrap it in a stable JSON envelope so the
-    // agent-facing JSON-stdout contract holds (the raw text is preserved as-is —
-    // parsing the human table into numbers would be fragile for a money tool).
-    const raw = await runOwsCli(["fund", "balance", "--wallet", signingName, "--chain", "base"]);
-    printJson({ wallet: { name: signingName, address }, chain: "base", balance: { raw } });
+    printJson({
+      wallet: { name: signingName, address },
+      network: BASE_USDC_BALANCE_NETWORK,
+      asset: BASE_USDC_BALANCE_ASSET,
+      balance: await getBaseUsdcBalance(address)
+    });
     return;
   }
 

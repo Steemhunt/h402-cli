@@ -19,7 +19,6 @@ vi.mock("../src/ows.js", () => ({
   createOwsWallet: vi.fn(),
   getOwsWallet,
   listOwsWallets,
-  runOwsCli: vi.fn(),
   signOwsMessage: vi.fn(),
   signOwsTypedData: vi.fn()
 }));
