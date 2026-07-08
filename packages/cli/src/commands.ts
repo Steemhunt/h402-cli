@@ -271,14 +271,27 @@ export async function authCommand(args: ParsedArgs) {
   printJson({ session });
 }
 
+function searchLimit(flags: Record<string, string | boolean>) {
+  const raw = flagString(flags, "limit", "20") as string;
+  if (!/^\d+$/.test(raw) || Number(raw) < 1) {
+    throw new Error(`Flag --limit must be a positive integer (got "${raw}").`);
+  }
+  return raw;
+}
+
+function rejectQueryOnPost(method: "GET" | "POST", query: Record<string, unknown> | undefined) {
+  if (method === "POST" && query && Object.keys(query).length > 0) {
+    throw new Error("Flag --query cannot be combined with POST requests; use --query for GET parameters or --json for a POST body, not both.");
+  }
+}
+
 export async function searchCommand(args: ParsedArgs) {
   // Validate the required query before any network work.
   const query = requireValue(args.positional.slice(1).join(" ").trim() || undefined, 'search query is required (e.g. h402 search "web search")');
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
-  const result = assertOk(
-    await requestJson(apiUrl, `/api/catalog/search?q=${encodeURIComponent(query)}&limit=${flagString(args.flags, "limit", "20")}`)
-  );
+  const params = new URLSearchParams({ q: query, limit: searchLimit(args.flags) });
+  const result = assertOk(await requestJson(apiUrl, `/api/catalog/search?${params.toString()}`));
   printJson(result);
 }
 
@@ -301,6 +314,7 @@ export async function quoteCommand(args: ParsedArgs) {
   const query = parseQueryFlag(args.flags);
   const provider = flagString(args.flags, "provider");
   const method = resolveMethod(args.flags, body !== undefined);
+  rejectQueryOnPost(method, query);
   const result = await requestJson(apiUrl, buildProxyPath(routeId, query, provider), {
     method,
     body: body === undefined ? undefined : JSON.stringify(body)
@@ -323,9 +337,9 @@ export async function callCommand(args: ParsedArgs) {
   const query = parseQueryFlag(args.flags);
   const provider = flagString(args.flags, "provider");
   const method = resolveMethod(args.flags, body !== undefined);
+  rejectQueryOnPost(method, query);
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
   const token = config.sessions[apiUrl];
-  const { name, address: walletAddress } = await resolveSigningWallet(args, config);
   const path = buildProxyPath(routeId, query, provider);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
@@ -350,6 +364,7 @@ export async function callCommand(args: ParsedArgs) {
     return;
   }
 
+  const { name, address: walletAddress } = await resolveSigningWallet(args, config);
   const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
     createPaymentSignatureHeader({
       paymentRequired,

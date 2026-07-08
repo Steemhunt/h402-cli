@@ -7,6 +7,21 @@ export type ApiResponse<T> = {
   headers: Headers;
 };
 
+function networkErrorMessage(error: unknown) {
+  const cause = error && typeof error === "object" ? (error as { cause?: unknown }).cause : undefined;
+  if (cause && typeof cause === "object") {
+    const code = (cause as { code?: unknown }).code;
+    if (typeof code === "string" && code) {
+      return code;
+    }
+    const message = (cause as { message?: unknown }).message;
+    if (typeof message === "string" && message) {
+      return message;
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function requestJson<T>(
   backendUrl: string,
   path: string,
@@ -23,10 +38,16 @@ export async function requestJson<T>(
     headers.set("authorization", `Bearer ${init.token}`);
   }
 
-  const response = await fetch(`${backendUrl}${path}`, {
-    ...init,
-    headers
-  });
+  const url = `${backendUrl}${path}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers
+    });
+  } catch (error) {
+    throw new CliError(`Request to ${url} failed: ${networkErrorMessage(error)}`);
+  }
 
   const text = await response.text();
   let body: T;
