@@ -36,14 +36,6 @@
   "engines": {
     "node": ">=22"
   },
-  "os": [
-    "darwin",
-    "linux"
-  ],
-  "cpu": [
-    "x64",
-    "arm64"
-  ],
   "scripts": {
     "build": "tsc",
     "prepack": "npm run build -w @h402/core && npm run build",
