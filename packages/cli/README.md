@@ -14,12 +14,16 @@ npm install -g @h402/cli
 ```
 
 > The `ows` wallet binary ([Open Wallet Standard](https://github.com/open-wallet-standard)) ships with the CLI, so a global install is self-contained. To use your own build instead, set `H402_OWS_BIN=/absolute/path/to/ows`.
+>
+> OWS native bindings currently target macOS/Linux glibc on x64/arm64. Non-wallet commands (`--help`, `search`, `quote`) lazy-load OWS and still work without native bindings; wallet creation and payment signing require those JS native bindings. `H402_OWS_BIN` only overrides the standalone `ows` binary used by balance/funding commands on custom runtimes.
 
 ## Quickstart
 
 ```bash
 h402 wallet create --name agent                      # local wallet (passphrase-less by default)
 h402 wallet fund --name agent                        # prints the Base USDC address + instructions
+h402 wallet list                                     # inspect local OWS wallets
+h402 wallet restore                                  # re-adopt existing OWS wallets into config
 h402 call web/search --name agent --json '{"query":"agent APIs"}'
 ```
 
@@ -30,6 +34,8 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | Command | Description |
 | --- | --- |
 | `h402 wallet create --name <n>` | Create a local OWS wallet (prints its address) |
+| `h402 wallet list` | List OWS wallets |
+| `h402 wallet restore` | Re-adopt OWS wallets into `~/.h402/config.json` |
 | `h402 wallet address --name <n>` | Print the wallet address |
 | `h402 wallet balance --name <n>` | Show the wallet's Base USDC balance (JSON envelope) |
 | `h402 wallet fund --name <n>` | Print the Base USDC deposit address and funding instructions |
@@ -77,11 +83,13 @@ before USDC unless you pass `--no-credit`.
 
 ## Agents & automation
 
-Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`address`/`balance`/`fund`.
+Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
 
-A successful `call` is wrapped as `{ "data": <provider result>, "h402": <routing metadata> }` — read the upstream provider's payload from `data`; `h402` carries `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), and `ledgerEntryId`. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
+A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, optional `paymentTransaction`, and optional `followUp`. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
 
-Provider-specific fields (e.g. `limit` on `web/search`) are only accepted when you pin that provider with `--provider`; on the default `auto` route, pass just the canonical fields or the request is rejected.
+Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes.
+
+`web/search` accepts common fields such as `query` and `limit` on the default `auto` route. Provider-specific fields on other routes/candidates still require pinning the owning provider with `--provider`; otherwise auto-routing may reject the request.
 
 ```bash
 h402 search "token holders"                        # JSON to stdout

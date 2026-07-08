@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -81,6 +81,36 @@ describe("loadConfig / saveConfig", () => {
     await expect(loadConfig()).resolves.toEqual(config);
   });
 
+  it("serializes concurrent saves and preserves independent wallet/session updates", async () => {
+    await Promise.all([
+      saveConfig({ backendUrl: PROD_URL, sessions: { "https://one.example": "one" }, wallets: { one: { address: "0x111" } } }),
+      saveConfig({ backendUrl: PROD_URL, sessions: { "https://two.example": "two" }, wallets: { two: { address: "0x222" } } })
+    ]);
+
+    await expect(loadConfig()).resolves.toEqual({
+      backendUrl: PROD_URL,
+      sessions: { "https://one.example": "one", "https://two.example": "two" },
+      wallets: { one: { address: "0x111" }, two: { address: "0x222" } }
+    });
+  });
+
+  it("does not let a stale full-snapshot save roll back newer wallet/session values", async () => {
+    const stale: CliConfig = {
+      backendUrl: PROD_URL,
+      sessions: { "https://api.example": "old" },
+      wallets: { agent: { address: "0x111" } }
+    };
+
+    await saveConfig({ backendUrl: PROD_URL, sessions: { "https://api.example": "new" }, wallets: {} });
+    await saveConfig(stale);
+
+    await expect(loadConfig()).resolves.toEqual({
+      backendUrl: PROD_URL,
+      sessions: { "https://api.example": "new" },
+      wallets: { agent: { address: "0x111" } }
+    });
+  });
+
   it("throws on malformed JSON and does not overwrite it", async () => {
     await mkdir(path.dirname(configFile), { recursive: true });
     await writeFile(configFile, "{ not valid json");
@@ -109,6 +139,17 @@ describe("loadConfig / saveConfig", () => {
     await mkdir(path.dirname(configFile), { recursive: true });
     await writeFile(configFile, JSON.stringify({ wallets: { h402: { address: "0xabc" } } }));
     await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: { h402: { address: "0xabc" } } });
+  });
+
+  it.skipIf(process.platform === "win32")("tightens pre-existing config permissions during load", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true, mode: 0o755 });
+    await writeFile(configFile, JSON.stringify({ backendUrl: PROD_URL, sessions: { [PROD_URL]: "tok" }, wallets: {} }), { mode: 0o644 });
+    await chmod(path.dirname(configFile), 0o755);
+    await chmod(configFile, 0o644);
+
+    await expect(loadConfig()).resolves.toMatchObject({ sessions: { [PROD_URL]: "tok" } });
+    expect((await stat(configFile)).mode & 0o777).toBe(0o600);
+    expect((await stat(path.dirname(configFile))).mode & 0o777).toBe(0o700);
   });
 
   it.skipIf(process.platform === "win32")("writes config and directory with private permissions", async () => {

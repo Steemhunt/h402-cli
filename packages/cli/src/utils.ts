@@ -14,7 +14,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
-    const name = value.slice(2);
+    const rawName = value.slice(2);
+    const equalsIndex = rawName.indexOf("=");
+    if (equalsIndex >= 0) {
+      flags[rawName.slice(0, equalsIndex)] = rawName.slice(equalsIndex + 1);
+      continue;
+    }
+
+    const name = rawName;
     const next = argv[index + 1];
     if (!next || next.startsWith("--")) {
       flags[name] = true;
@@ -53,25 +60,54 @@ export function resolveMethod(flags: Record<string, string | boolean>, hasBody: 
   if (normalized !== "GET" && normalized !== "POST") {
     throw new Error(`Flag --method must be GET or POST (got "${raw}").`);
   }
+  if (normalized === "GET" && hasBody) {
+    throw new Error("Flag --method GET cannot be combined with --json; GET requests must use --query for URL parameters.");
+  }
   return normalized;
 }
 
-export function parseJsonFlag(flags: Record<string, string | boolean>) {
-  const value = flagString(flags, "json");
-  if (!value) {
+function flagValue(flags: Record<string, string | boolean>, name: string) {
+  const value = flags[name];
+  if (value === undefined) {
     return undefined;
   }
-  return JSON.parse(value) as unknown;
+  if (typeof value !== "string" || value === "") {
+    throw new Error(`Flag --${name} requires a value.`);
+  }
+  return value;
+}
+
+function jsonParseMessage(flag: "json" | "query", value: string, example: string, error: unknown) {
+  const parserMessage = error instanceof Error ? error.message : String(error);
+  const keyValueHint = flag === "query" && /^[^=\s]+=/.test(value) ? " key=value syntax is not supported;" : "";
+  return `Flag --${flag} must be ${flag === "query" ? "a JSON object" : "valid JSON"}, e.g. --${flag} '${example}' (got ${JSON.stringify(value)};${keyValueHint} ${parserMessage}).`;
+}
+
+export function parseJsonFlag(flags: Record<string, string | boolean>) {
+  const value = flagValue(flags, "json");
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch (error) {
+    throw new Error(jsonParseMessage("json", value, '{"query":"Seoul"}', error));
+  }
 }
 
 export function parseQueryFlag(flags: Record<string, string | boolean>) {
-  const value = flagString(flags, "query");
-  if (!value) {
+  const value = flagValue(flags, "query");
+  if (value === undefined) {
     return undefined;
   }
-  const parsed = JSON.parse(value) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch (error) {
+    throw new Error(jsonParseMessage("query", value, '{"q":"Seoul"}', error));
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("--query must be a JSON object");
+    throw new Error(`Flag --query must be a JSON object, e.g. --query '{"q":"Seoul"}' (got ${JSON.stringify(value)}).`);
   }
   return parsed as Record<string, unknown>;
 }

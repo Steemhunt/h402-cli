@@ -9,6 +9,15 @@
     "directory": "packages/core"
   },
   "homepage": "https://h402.hunt.town",
+  "bugs": {
+    "url": "https://github.com/Steemhunt/h402-cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
