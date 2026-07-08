@@ -1,19 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedArgs } from "../src/utils";
 
-const { loadConfig, ADDR } = vi.hoisted(() => ({
+const { loadConfig, updateConfig, getOwsWallet, listOwsWallets, ADDR } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
+  updateConfig: vi.fn(),
+  getOwsWallet: vi.fn(),
+  listOwsWallets: vi.fn(),
   ADDR: "0x1111111111111111111111111111111111111111"
 }));
 
 vi.mock("../src/config.js", () => ({
   loadConfig,
-  saveConfig: vi.fn(),
+  updateConfig,
   backendUrl: () => "https://test.example"
 }));
 
 vi.mock("../src/ows.js", () => ({
   createOwsWallet: vi.fn(),
+  getOwsWallet,
+  listOwsWallets,
   runOwsCli: vi.fn(),
   signOwsMessage: vi.fn(),
   signOwsTypedData: vi.fn()
@@ -35,12 +40,17 @@ describe("callCommand free routes", () => {
   beforeEach(() => {
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {}, wallets: {} });
+    getOwsWallet.mockRejectedValue(new Error("wallet not found"));
+    listOwsWallets.mockResolvedValue([]);
   });
 
   afterEach(() => {
     stdout.mockRestore();
     vi.unstubAllGlobals();
     loadConfig.mockReset();
+    updateConfig.mockReset();
+    getOwsWallet.mockReset();
+    listOwsWallets.mockReset();
   });
 
   it("does not require a local wallet before a free first response", async () => {

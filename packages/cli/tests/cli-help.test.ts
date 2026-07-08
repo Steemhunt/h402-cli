@@ -46,7 +46,7 @@ describe("help rendering", () => {
 
   it("wallet help lists subcommands", () => {
     const help = commandHelp(["wallet"]);
-    for (const sub of ["create", "address", "balance", "fund"]) {
+    for (const sub of ["create", "list", "restore", "address", "balance", "fund"]) {
       expect(help).toContain(sub);
     }
   });
