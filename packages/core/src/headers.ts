@@ -26,12 +26,14 @@ export function decodeX402Header<T>(value: string) {
 /** Read an x402 `PAYMENT-REQUIRED` from a response header, falling back to the body. */
 export function paymentRequiredFromResponse(headers: Headers, body: unknown): X402PaymentRequired | null {
   const header = headers.get(X402_HEADERS.paymentRequired);
-  if (header) {
-    return decodeX402Header<X402PaymentRequired>(header);
+  const parsedHeader = parsePaymentRequiredHeader(header);
+  if (parsedHeader) {
+    return parsedHeader;
   }
 
   if (body && typeof body === "object" && "x402Version" in body && "accepts" in body) {
-    return body as X402PaymentRequired;
+    const payload = body as X402PaymentRequired;
+    return payload.x402Version === X402_VERSION && Array.isArray(payload.accepts) ? payload : null;
   }
 
   return null;

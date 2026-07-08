@@ -42,6 +42,17 @@ export async function createOwsWallet(name: string, passphrase?: string) {
   return { name, address: getEvmAddress(wallet), wallet };
 }
 
+export async function getOwsWallet(name: string) {
+  const { getWallet } = await loadOwsCore();
+  const wallet = getWallet(name);
+  return { name: wallet.name, address: getEvmAddress(wallet), wallet };
+}
+
+export async function listOwsWallets() {
+  const { listWallets } = await loadOwsCore();
+  return listWallets().map((wallet) => ({ name: wallet.name, address: getEvmAddress(wallet), wallet }));
+}
+
 export function normalizeOwsSignature(signature: string, recoveryId?: number) {
   const normalized = signature.startsWith("0x") ? signature : `0x${signature}`;
   if (!HEX_SIGNATURE_PATTERN.test(normalized)) {

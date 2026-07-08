@@ -17,6 +17,8 @@ export function createNonce(): `0x${string}` {
   return `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
+const VALID_AFTER_CLOCK_SKEW_SECONDS = 60;
+
 /**
  * Build the EIP-3009 authorization fields (string-valued, signer-agnostic) for an
  * x402 `exact` payment. Each signer maps these into its own typed-data shape.
@@ -34,7 +36,7 @@ export function buildTransferAuthorization(input: {
     from: input.from,
     to: input.to,
     value: input.amount,
-    validAfter: String(now - 5),
+    validAfter: String(now - VALID_AFTER_CLOCK_SKEW_SECONDS),
     // Floor defensively: a fractional timeout from an upstream challenge would
     // produce a non-integer uint256 string that wallets reject.
     validBefore: String(now + Math.floor(input.maxTimeoutSeconds)),
