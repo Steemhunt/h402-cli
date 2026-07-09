@@ -86,4 +86,35 @@ describe("requestJson", () => {
       detail: { backendUrl: "https://staging.example", url: "https://staging.example/routes/auto/web/search", error: { message: "boom" } }
     });
   });
+
+  for (const code of ["idempotency_key_already_used", "idempotency_key_in_progress"]) {
+    it(`adds no-double-charge guidance for ${code}`, () => {
+      const result = {
+        backendUrl: "https://staging.example",
+        url: "https://staging.example/routes/auto/web/search",
+        status: 409,
+        statusText: "Conflict",
+        headers: new Headers(),
+        body: { error: { code, message: "idempotency key conflict" } }
+      };
+
+      const error = (() => {
+        try {
+          assertOk(result);
+        } catch (thrown) {
+          return thrown;
+        }
+      })();
+
+      expect(error).toBeInstanceOf(CliError);
+      expect(error).toMatchObject({
+        message: expect.stringMatching(/do NOT sign or pay with a new idempotency key/i),
+        detail: {
+          backendUrl: "https://staging.example",
+          url: "https://staging.example/routes/auto/web/search",
+          error: { code, message: "idempotency key conflict" }
+        }
+      });
+    });
+  }
 });
