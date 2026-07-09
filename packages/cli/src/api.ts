@@ -92,6 +92,26 @@ function backendMessage(body: unknown): string | undefined {
   return typeof record.message === "string" ? record.message : undefined;
 }
 
+function backendErrorCode(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") {
+    return undefined;
+  }
+  const record = body as Record<string, unknown>;
+  const error = record.error;
+  if (error && typeof error === "object" && typeof (error as Record<string, unknown>).code === "string") {
+    return (error as Record<string, unknown>).code as string;
+  }
+  return typeof record.code === "string" ? record.code : undefined;
+}
+
+function idempotencyGuidance(body: unknown): string | undefined {
+  const code = backendErrorCode(body);
+  if (code !== "idempotency_key_already_used" && code !== "idempotency_key_in_progress") {
+    return undefined;
+  }
+  return "The earlier request for this idempotency key may already be completed, charged, or still settling; do NOT sign or pay with a new idempotency key unless you intentionally accept a second charge.";
+}
+
 export function assertOk<T>(response: ApiResponse<T>): T {
   if (response.status < 200 || response.status >= 300) {
     const { body } = response;
@@ -107,7 +127,9 @@ export function assertOk<T>(response: ApiResponse<T>): T {
     // Structured JSON error: summarize its message, and carry the full body as `detail`
     // so the stderr error envelope stays machine-readable.
     const message = backendMessage(body);
-    throw new CliError(message ? `Request failed: ${statusLine}: ${message}` : `Request failed: ${statusLine}`, body);
+    const guidance = idempotencyGuidance(body);
+    const summary = message ? `Request failed: ${statusLine}: ${message}` : `Request failed: ${statusLine}`;
+    throw new CliError(guidance ? `${summary}. ${guidance}` : summary, body);
   }
   return response.body;
 }

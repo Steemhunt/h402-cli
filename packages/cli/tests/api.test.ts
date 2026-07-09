@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { H402_HTTP_TIMEOUT_MS, requestJson } from "../src/api";
+import { H402_HTTP_TIMEOUT_MS, assertOk, requestJson } from "../src/api";
 import { CliError } from "../src/errors";
 
 function response(status: number, body: unknown) {
@@ -59,4 +59,17 @@ describe("requestJson", () => {
     expect(error).toBeInstanceOf(CliError);
     expect(error).toMatchObject({ message: "Request to http://127.0.0.1:9/api/catalog/search?q=x failed: ECONNREFUSED" });
   });
+
+  for (const code of ["idempotency_key_already_used", "idempotency_key_in_progress"]) {
+    it(`adds no-double-charge guidance for ${code}`, () => {
+      const result = {
+        status: 409,
+        statusText: "Conflict",
+        headers: new Headers(),
+        body: { error: { code, message: "idempotency key conflict" } }
+      };
+
+      expect(() => assertOk(result)).toThrow(/do NOT sign or pay with a new idempotency key/i);
+    });
+  }
 });

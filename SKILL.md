@@ -81,15 +81,16 @@ machine), attaches it as a `PAYMENT-SIGNATURE` header, and retries the same requ
 are charged the exact per-call price and get the result back. Pass `--max-usd <amount>`
 (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse
 signing a challenge above that USDC cap. Paid call output includes `h402.signedAmount`
-as a receipt of the amount signed. Reuse `--idempotency-key`
-on a retry — h402 dedupes by it, so a resent paid request never double-charges.
+as a receipt of the amount signed. `--idempotency-key` is double-charge protection, not
+result replay: reuse the same key after a lost response, but do not switch to a new key
+unless you intentionally accept buying the call again.
 
 ## Running non-interactively (agents)
 
 - Defaults to the production backend (`https://h402.hunt.town`); set `H402_API_URL` or `--api-url` only to override.
 - Wallets are passphrase-less by default, so signing needs no flags and never prompts. Only if a wallet was created with an opt-in passphrase: `export H402_WALLET_PASSPHRASE=...` (the CLI says so when it hits such a wallet).
 - Read stdout as JSON; check the process exit code (non-zero = failure, message on stderr).
-- Pass `--idempotency-key <uuid>` when you retry a `call`.
+- Pass `--idempotency-key <uuid>` when you retry a `call` after a lost response. Keep the same key and do **not** change to a new key unless you intentionally accept buying the call again.
 
 ## Notes
 
