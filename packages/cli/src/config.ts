@@ -8,6 +8,7 @@ export type CliConfig = {
   backendUrl: string;
   sessions: Record<string, string>;
   wallets: Record<string, { address?: string }>;
+  maxUsd?: string;
 };
 
 // @h402/cli is an end-user tool: default to the production backend. Override
@@ -24,11 +25,15 @@ function defaultConfig(): CliConfig {
 
 function normalizeConfig(parsed: Record<string, unknown>): CliConfig {
   const defaults = defaultConfig();
-  return {
+  const normalized: CliConfig = {
     backendUrl: typeof parsed.backendUrl === "string" ? parsed.backendUrl : defaults.backendUrl,
     sessions: isPlainObject(parsed.sessions) ? (parsed.sessions as Record<string, string>) : {},
     wallets: isPlainObject(parsed.wallets) ? (parsed.wallets as CliConfig["wallets"]) : {}
   };
+  if (typeof parsed.maxUsd === "string") {
+    normalized.maxUsd = parsed.maxUsd;
+  }
+  return normalized;
 }
 
 function isPlainObject(value: unknown): boolean {
@@ -91,16 +96,20 @@ async function acquireConfigLock(dir: string) {
 }
 
 function cloneConfig(config: CliConfig): CliConfig {
-  return {
+  const cloned: CliConfig = {
     backendUrl: config.backendUrl,
     sessions: { ...config.sessions },
     wallets: Object.fromEntries(Object.entries(config.wallets).map(([name, wallet]) => [name, { ...wallet }]))
   };
+  if (config.maxUsd !== undefined) {
+    cloned.maxUsd = config.maxUsd;
+  }
+  return cloned;
 }
 
 function mergeConfigForSave(existing: CliConfig | undefined, next: CliConfig): CliConfig {
   if (!existing) return next;
-  return {
+  const merged: CliConfig = {
     backendUrl: existing.backendUrl || next.backendUrl,
     // saveConfig receives full snapshots from some callers/tests. Preserve values
     // already written under the lock on key collisions so a stale snapshot cannot
@@ -109,6 +118,11 @@ function mergeConfigForSave(existing: CliConfig | undefined, next: CliConfig): C
     sessions: { ...next.sessions, ...existing.sessions },
     wallets: { ...next.wallets, ...existing.wallets }
   };
+  const maxUsd = next.maxUsd ?? existing.maxUsd;
+  if (maxUsd !== undefined) {
+    merged.maxUsd = maxUsd;
+  }
+  return merged;
 }
 
 async function atomicWritePrivateJson(file: string, config: CliConfig) {

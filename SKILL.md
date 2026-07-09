@@ -70,7 +70,7 @@ h402 call crypto/token-holders --name agent \
 - h402 auto-routes to the best provider. Pin one with `--provider <name>` for determinism.
 - Provider-specific fields still require pinning the owning provider with `--provider`, but `web/search` fields such as `query` and `limit` are common fields and work on the default `auto` route.
 - Every command prints **JSON to stdout** (including `wallet fund` and `wallet balance`); failures print to stderr and exit non-zero.
-- A successful `call` returns `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the provider output from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing`, `paidBy`, `ledgerEntryId`, optional `paymentTransaction`, and optional `followUp`. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
+- A successful `call` returns `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the provider output from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing`, `paidBy`, `ledgerEntryId`, optional `paymentTransaction`, optional `followUp`, and optional `signedAmount` for paid x402 calls. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
 - If `h402.followUp` is present, the response is a job receipt, not the final result. Follow `h402.followUp.method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the async job completes.
 
 ## How payment works (per call, non-custodial)
@@ -78,7 +78,10 @@ h402 call crypto/token-holders --name agent \
 The first request returns `402` with an x402 `PAYMENT-REQUIRED` challenge. The CLI signs
 a Base USDC EIP-3009 `transferWithAuthorization` **locally** (your key never leaves the
 machine), attaches it as a `PAYMENT-SIGNATURE` header, and retries the same request. You
-are charged the exact per-call price and get the result back. Reuse `--idempotency-key`
+are charged the exact per-call price and get the result back. Pass `--max-usd <amount>`
+(or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse
+signing a challenge above that USDC cap. Paid call output includes `h402.signedAmount`
+as a receipt of the amount signed. Reuse `--idempotency-key`
 on a retry — h402 dedupes by it, so a resent paid request never double-charges.
 
 ## Running non-interactively (agents)
