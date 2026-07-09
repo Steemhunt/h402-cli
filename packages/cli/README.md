@@ -51,15 +51,15 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `--name <wallet>` | all | Wallet to use (default `h402`) |
-| `--wallet 0x...` | all | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
-| `--api-url <url>` | all | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`) |
+| `--name <wallet>` | wallet create/address/balance/fund; auth; call | Wallet to use (default `h402`) |
+| `--wallet 0x...` | wallet address/balance/fund; auth; call | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
+| `--api-url <url>` | auth, credits, search, quote, call | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`) |
 | `--json '{...}'` | quote, call | Request body (sets method to POST) |
 | `--query '{...}'` | quote, call | URL query params (GET); values must be strings/numbers/booleans |
 | `--provider <name>` | quote, call | Pin a provider; default is `auto` (h402 picks the best) |
 | `--method GET\|POST` | quote, call | Override the method (inferred from `--json` otherwise) |
-| `--passphrase [<s>]` | create, auth, call | Passphrase for a passphrase-protected wallet; omit the value to be prompted (or `H402_WALLET_PASSPHRASE`) |
-| `--no-passphrase` | create, auth, call | Force passphrase-less signing even if `H402_WALLET_PASSPHRASE` is set (the default needs no flag) |
+| `--passphrase [<s>]` | wallet create, auth, call | Passphrase for a passphrase-protected wallet; omit the value to be prompted (or `H402_WALLET_PASSPHRASE`) |
+| `--no-passphrase` | wallet create, auth, call | Force passphrase-less signing even if `H402_WALLET_PASSPHRASE` is set (the default needs no flag) |
 | `--no-credit` | call | Ignore bonus credits and pay x402 only |
 | `--max-usd <usd>` | call | Optional client-side cap; refuse to sign if the quoted Base USDC amount exceeds it |
 | `--idempotency-key <uuid>` | call | Stable key for safe retries (default: random) |
