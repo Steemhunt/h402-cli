@@ -11,6 +11,8 @@ const h402FetchDispatcher = new Agent({
 type FetchInitWithDispatcher = RequestInit & { dispatcher?: Agent; token?: string };
 
 export type ApiResponse<T> = {
+  backendUrl: string;
+  url: string;
   status: number;
   statusText: string;
   body: T;
@@ -59,7 +61,7 @@ export async function requestJson<T>(
       dispatcher: fetchInit.dispatcher ?? h402FetchDispatcher
     } as RequestInit);
   } catch (error) {
-    throw new CliError(`Request to ${url} failed: ${networkErrorMessage(error)}`);
+    throw new CliError(`Request to ${url} failed: ${networkErrorMessage(error)}`, { backendUrl, url });
   }
 
   const text = await response.text();
@@ -71,7 +73,20 @@ export async function requestJson<T>(
     // parse — keep the raw text so assertOk can surface it instead of throwing here.
     body = text as unknown as T;
   }
-  return { status: response.status, statusText: response.statusText, body, headers: response.headers };
+  return { backendUrl, url, status: response.status, statusText: response.statusText, body, headers: response.headers };
+}
+
+function responseContext<T>(response: ApiResponse<T>) {
+  return { backendUrl: response.backendUrl, url: response.url };
+}
+
+function responseErrorDetail<T>(response: ApiResponse<T>): unknown {
+  const context = responseContext(response);
+  const { body } = response;
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    return { ...(body as Record<string, unknown>), ...context };
+  }
+  return context;
 }
 
 // Pull a human-readable message out of a backend error body — covering the common
@@ -98,16 +113,16 @@ export function assertOk<T>(response: ApiResponse<T>): T {
     const statusLine = `${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
     // Empty body (a framework 405, an infra 502/504): status only — never the literal "null".
     if (body === null || body === undefined || body === "") {
-      throw new CliError(`Request failed: ${statusLine}`);
+      throw new CliError(`Request failed: ${statusLine}`, responseContext(response));
     }
     // Non-JSON string body (an HTML 502 page, a plain-text gateway error): show it verbatim.
     if (typeof body === "string") {
-      throw new CliError(`Request failed: ${statusLine}: ${body}`);
+      throw new CliError(`Request failed: ${statusLine}: ${body}`, responseContext(response));
     }
     // Structured JSON error: summarize its message, and carry the full body as `detail`
     // so the stderr error envelope stays machine-readable.
     const message = backendMessage(body);
-    throw new CliError(message ? `Request failed: ${statusLine}: ${message}` : `Request failed: ${statusLine}`, body);
+    throw new CliError(message ? `Request failed: ${statusLine}: ${message}` : `Request failed: ${statusLine}`, responseErrorDetail(response));
   }
   return response.body;
 }

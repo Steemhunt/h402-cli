@@ -20,7 +20,7 @@ function configPath() {
 }
 
 function defaultConfig(): CliConfig {
-  return { backendUrl: process.env.H402_API_URL ?? DEFAULT_BACKEND_URL, sessions: {}, wallets: {} };
+  return { backendUrl: DEFAULT_BACKEND_URL, sessions: {}, wallets: {} };
 }
 
 function normalizeConfig(parsed: Record<string, unknown>): CliConfig {
