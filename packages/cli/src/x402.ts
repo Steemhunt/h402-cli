@@ -24,13 +24,17 @@ export const BASE_USDC_REQUIREMENT_OPTIONS = {
   requireEip3009: true
 } as const;
 
+export function selectBaseUsdcRequirement(paymentRequired: X402PaymentRequired) {
+  return selectExactRequirement(paymentRequired, BASE_USDC_REQUIREMENT_OPTIONS);
+}
+
 export async function createPaymentSignatureHeader(input: {
   paymentRequired: X402PaymentRequired;
   walletAddress: string;
   walletName: string;
   passphrase?: string;
 }) {
-  const accepted = selectExactRequirement(input.paymentRequired, BASE_USDC_REQUIREMENT_OPTIONS);
+  const accepted = selectBaseUsdcRequirement(input.paymentRequired);
   const authorization = buildTransferAuthorization({
     from: input.walletAddress as `0x${string}`,
     to: accepted.payTo as `0x${string}`,

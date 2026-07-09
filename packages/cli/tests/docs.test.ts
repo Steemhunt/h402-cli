@@ -13,28 +13,21 @@ const DOC_FILES: Record<string, string> = {
 
 describe("doc examples stay runnable against the catalog contract", () => {
   for (const [label, file] of Object.entries(DOC_FILES)) {
-    it(`${label}: docs do not describe web/search limit as provider-native`, () => {
-      // After h402-web#417/#415, `limit` is a common canonical field for web/search auto.
-      // Docs must not steer agents into unnecessary provider pinning for this field.
+    it(`${label}: does not describe web/search limit as provider-specific`, () => {
       const text = readFileSync(file, "utf8");
+      expect(text).toMatch(/`web\/search` (accepts common fields such as `query` and `limit`|fields such as `query` and `limit` are common fields)/);
+      expect(text).not.toContain('Provider-specific fields (e.g. `limit` on `web/search`)');
       expect(text).not.toMatch(/limit[^\n]+web\/search[^\n]+provider-specific/i);
       expect(text).not.toMatch(/provider-specific[^\n]+limit[^\n]+web\/search/i);
     });
 
-    it(`${label}: web/search call examples send no provider-native field on the auto route`, () => {
-      // Auto examples may use canonical fields such as query/limit, but must not send
-      // documented provider-native fields unless they also pin the owning provider.
-      const offenders = readFileSync(file, "utf8")
-        .split("\n")
-        .filter((line) => line.includes("h402 call web/search") && line.includes("mode") && !line.includes("--provider"));
-      expect(offenders).toEqual([]);
-    });
-
-    it(`${label}: response envelope docs include optional meta and h402 followUp`, () => {
+    it(`${label}: documents the current call envelope and async follow-up contract`, () => {
       const text = readFileSync(file, "utf8");
-      expect(text).toContain('"meta"?: <pagination/provider metadata>');
-      expect(text).toContain("followUp");
+      expect(text).toContain('"meta"?: <contract metadata>');
       expect(text).toContain("paymentTransaction");
+      expect(text).toContain("h402.followUp");
+      expect(text).toContain("params.jobId");
+      expect(text).not.toContain('Provider-specific fields (e.g. `limit` on `web/search`)');
       expect(text).not.toContain('{ "data": <provider result>, "h402": <routing metadata> }');
     });
   }

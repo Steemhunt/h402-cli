@@ -41,6 +41,16 @@ describe("headers", () => {
     expect(paymentRequiredFromResponse(new Headers(), paymentRequired)).toEqual(paymentRequired);
   });
 
+  it("ignores malformed PAYMENT-REQUIRED headers instead of throwing raw decoder errors", () => {
+    const headers = new Headers({ "PAYMENT-REQUIRED": "not base64" });
+    expect(paymentRequiredFromResponse(headers, { error: "bad challenge" })).toBeNull();
+  });
+
+  it("falls back to a valid body when the PAYMENT-REQUIRED header is malformed", () => {
+    const headers = new Headers({ "PAYMENT-REQUIRED": "not base64" });
+    expect(paymentRequiredFromResponse(headers, paymentRequired)).toEqual(paymentRequired);
+  });
+
   it("rejects malformed required/signature headers", () => {
     expect(parsePaymentRequiredHeader(null)).toBeNull();
     expect(parsePaymentRequiredHeader(encodeX402Header({ x402Version: 1 }))).toBeNull();
@@ -84,7 +94,8 @@ describe("buildTransferAuthorization", () => {
       maxTimeoutSeconds: 120,
       now: 1_000
     });
-    expect(authorization.validAfter).toBe("995");
+    expect(authorization.validAfter).toBe("940");
+    expect(Number(authorization.validBefore) - Number(authorization.validAfter)).toBe(180);
     expect(authorization.validBefore).toBe("1120");
     expect(authorization.value).toBe("50000");
     expect(authorization.nonce).toMatch(/^0x[a-f0-9]{64}$/);
