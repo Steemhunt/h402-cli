@@ -87,9 +87,14 @@ describe("quote/call exit codes on backend responses", () => {
   it("throws a CliError carrying the backend error body so the stderr envelope stays structured", async () => {
     const backend = { error: { code: "provider_native_field_requires_pinning", message: "pin it" } };
     stubFetch(422, backend);
-    const error = await callCommand(args("web/search")).catch((thrown: unknown) => thrown);
+    const error = await callCommand(args("web/search", { "idempotency-key": "idem-123" })).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(CliError);
-    expect(errorEnvelope(error)).toEqual({ error: { message: "Request failed: 422: pin it", detail: backend } });
+    expect(errorEnvelope(error)).toEqual({
+      error: {
+        message: "Request failed: 422: pin it (idempotency-key: idem-123)",
+        detail: { idempotencyKey: "idem-123", ...backend }
+      }
+    });
   });
 
   it("rejects --query with a POST body before sending a quote request", async () => {

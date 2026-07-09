@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { assertOk, requestJson } from "./api.js";
 import { BASE_USDC_BALANCE_ASSET, BASE_USDC_BALANCE_NETWORK, getBaseUsdcBalance } from "./base-usdc-balance.js";
 import { backendUrl, loadConfig, updateConfig, type CliConfig } from "./config.js";
+import { CliError } from "./errors.js";
 import { createOwsWallet, getOwsWallet, listOwsWallets, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
 import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, type ParsedArgs } from "./utils.js";
@@ -73,6 +74,15 @@ export async function createPassphrase(args: ParsedArgs) {
     return promptBarePassphrase({ confirm: true });
   }
   return explicitPassphrase(args);
+}
+
+function withIdempotencyKey(error: unknown, idempotencyKey: string) {
+  const existingDetail = error instanceof CliError ? error.detail : undefined;
+  const detail = existingDetail && typeof existingDetail === "object" && !Array.isArray(existingDetail)
+    ? { ...(existingDetail as Record<string, unknown>), idempotencyKey }
+    : { idempotencyKey, ...(existingDetail === undefined ? {} : { detail: existingDetail }) };
+  const message = `${error instanceof Error ? error.message : String(error)} (idempotency-key: ${idempotencyKey})`;
+  return new CliError(message, detail);
 }
 
 type ResolvedWallet = { name: string; address: string };
@@ -204,28 +214,28 @@ export async function walletCommand(args: ParsedArgs) {
     await updateConfig((current) => {
       current.wallets[name] = { address: wallet.address };
     });
-    printJson({ wallet: { name, address: wallet.address } });
+    await printJson({ wallet: { name, address: wallet.address } });
     return;
   }
 
   if (subcommand === "address") {
-    printJson({ wallet: await resolveSigningWallet(args, config) });
+    await printJson({ wallet: await resolveSigningWallet(args, config) });
     return;
   }
 
   if (subcommand === "list") {
-    printJson({ wallets: normalizeOwsWallets(await listOwsWallets()) });
+    await printJson({ wallets: normalizeOwsWallets(await listOwsWallets()) });
     return;
   }
 
   if (subcommand === "restore") {
-    printJson({ wallets: await restoreOwsWallets(config) });
+    await printJson({ wallets: await restoreOwsWallets(config) });
     return;
   }
 
   if (subcommand === "balance") {
     const { name: signingName, address } = await resolveSigningWallet(args, config);
-    printJson({
+    await printJson({
       wallet: { name: signingName, address },
       network: BASE_USDC_BALANCE_NETWORK,
       asset: BASE_USDC_BALANCE_ASSET,
@@ -236,7 +246,7 @@ export async function walletCommand(args: ParsedArgs) {
 
   if (subcommand === "fund") {
     const { name: signingName, address } = await resolveSigningWallet(args, config);
-    printJson({
+    await printJson({
       wallet: { name: signingName, address },
       network: "base",
       token: "USDC",
@@ -270,7 +280,7 @@ export async function authCommand(args: ParsedArgs) {
     current.backendUrl = apiUrl;
     current.sessions[apiUrl] = session.token;
   });
-  printJson({ session: { address: session.address, expiresAt: session.expiresAt } });
+  await printJson({ session: { address: session.address, expiresAt: session.expiresAt } });
 }
 
 function searchLimit(flags: Record<string, string | boolean>) {
@@ -294,7 +304,7 @@ export async function searchCommand(args: ParsedArgs) {
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const params = new URLSearchParams({ q: query, limit: searchLimit(args.flags) });
   const result = assertOk(await requestJson(apiUrl, `/api/catalog/search?${params.toString()}`));
-  printJson(result);
+  await printJson(result);
 }
 
 export async function creditsCommand(args: ParsedArgs) {
@@ -305,7 +315,7 @@ export async function creditsCommand(args: ParsedArgs) {
     throw new Error("No session token. Run h402 auth first.");
   }
 
-  printJson(assertOk(await requestJson(apiUrl, "/api/me/credits", { token })));
+  await printJson(assertOk(await requestJson(apiUrl, "/api/me/credits", { token })));
 }
 
 export async function quoteCommand(args: ParsedArgs) {
@@ -323,12 +333,12 @@ export async function quoteCommand(args: ParsedArgs) {
   });
   const paymentRequired = paymentRequiredFromResponse(result.headers, result.body);
   if (paymentRequired) {
-    printJson({ paymentRequired });
+    await printJson({ paymentRequired });
     return;
   }
   // No challenge: a free route returns its result with a 2xx. Any non-2xx
   // (404/500/...) is a real error and must exit non-zero, not print as a result.
-  printJson(assertOk(result));
+  await printJson(assertOk(result));
 }
 
 function parseUsdMicros(raw: string, source: string) {
@@ -405,40 +415,44 @@ export async function callCommand(args: ParsedArgs) {
     headers.authorization = `Bearer ${token}`;
   }
 
-  const first = await requestJson<unknown>(apiUrl, path, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+  try {
+    const first = await requestJson<unknown>(apiUrl, path, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
 
-  const paymentRequired = first.status === 402 ? paymentRequiredFromResponse(first.headers, first.body) : null;
-  if (!paymentRequired) {
-    // A 2xx means the route answered without payment (free, or covered by credit).
-    // A non-2xx first response (incl. an unparseable 402) is a real error: assertOk
-    // exits non-zero instead of printing the error body as a successful result.
-    printJson(assertOk(first));
-    return;
+    const paymentRequired = first.status === 402 ? paymentRequiredFromResponse(first.headers, first.body) : null;
+    if (!paymentRequired) {
+      // A 2xx means the route answered without payment (free, or covered by credit).
+      // A non-2xx first response (incl. an unparseable 402) is a real error: assertOk
+      // exits non-zero instead of printing the error body as a successful result.
+      await printJson(assertOk(first));
+      return;
+    }
+
+    const accepted = selectBaseUsdcRequirement(paymentRequired);
+    assertUnderMaxUsd(accepted.amount, paymentCap);
+    const { name, address: walletAddress } = await resolveSigningWallet(args, config);
+    const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
+      createPaymentSignatureHeader({
+        paymentRequired,
+        walletAddress,
+        walletName: name,
+        passphrase
+      })
+    );
+    const paid = await requestJson<unknown>(apiUrl, path, {
+      method,
+      headers: {
+        "idempotency-key": idempotencyKey,
+        [X402_HEADERS.paymentSignature]: paymentSignature
+      },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+
+    await printJson(withSignedAmount(assertOk(paid), accepted));
+  } catch (error) {
+    throw withIdempotencyKey(error, idempotencyKey);
   }
-
-  const accepted = selectBaseUsdcRequirement(paymentRequired);
-  assertUnderMaxUsd(accepted.amount, paymentCap);
-  const { name, address: walletAddress } = await resolveSigningWallet(args, config);
-  const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
-    createPaymentSignatureHeader({
-      paymentRequired,
-      walletAddress,
-      walletName: name,
-      passphrase
-    })
-  );
-  const paid = await requestJson<unknown>(apiUrl, path, {
-    method,
-    headers: {
-      "idempotency-key": idempotencyKey,
-      [X402_HEADERS.paymentSignature]: paymentSignature
-    },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-
-  printJson(withSignedAmount(assertOk(paid), accepted));
 }

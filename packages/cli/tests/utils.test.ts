@@ -1,5 +1,35 @@
-import { describe, expect, it } from "vitest";
-import { buildProxyPath, parseArgs, parseJsonFlag, parseQueryFlag, resolveMethod } from "../src/utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildProxyPath, parseArgs, parseJsonFlag, parseQueryFlag, printJson, resolveMethod } from "../src/utils";
+
+describe("printJson", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("waits for stdout drain when a pipe applies backpressure", async () => {
+    let resolveDrain: (() => void) | undefined;
+    const drained = new Promise<void>((resolve) => {
+      resolveDrain = resolve;
+    });
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => {
+      void drained.then(() => process.stdout.emit("drain"));
+      return false;
+    });
+
+    const printed = printJson({ payload: "x".repeat(128 * 1024) });
+    await Promise.resolve();
+    let settled = false;
+    void printed.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    resolveDrain?.();
+    await expect(printed).resolves.toBeUndefined();
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('"payload"'));
+  });
+});
 
 describe("parseArgs", () => {
   it("parses positional arguments and flags", () => {

@@ -9,20 +9,20 @@ import {
 } from "./commands.js";
 import { errorEnvelope } from "./errors.js";
 import { assertKnownFlags, assertTopLevelFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "./help.js";
-import { flagBoolean, parseArgs } from "./utils.js";
+import { flagBoolean, parseArgs, writeStderr, writeStdout } from "./utils.js";
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const command = args.positional[0];
 
   if (flagBoolean(args.flags, "version") || command === "version") {
-    process.stdout.write(`${getVersion()}\n`);
+    await writeStdout(`${getVersion()}\n`);
     return;
   }
 
   if (!command || command === "help") {
     assertTopLevelFlags(args.flags);
-    process.stdout.write(`${topLevelHelp()}\n`);
+    await writeStdout(`${topLevelHelp()}\n`);
     return;
   }
 
@@ -33,7 +33,7 @@ async function main() {
   const commandPath = resolveCommandPath(args.positional);
 
   if (flagBoolean(args.flags, "help")) {
-    process.stdout.write(`${commandHelp(commandPath)}\n`);
+    await writeStdout(`${commandHelp(commandPath)}\n`);
     return;
   }
 
@@ -53,11 +53,11 @@ async function main() {
 
 main()
   .then(() => {
-    process.exit(0);
+    process.exitCode = 0;
   })
-  .catch((error) => {
+  .catch(async (error) => {
     // Every failure exits non-zero with one machine-readable stderr shape:
     // { "error": { "message", "detail"? } } (see errorEnvelope).
-    process.stderr.write(`${JSON.stringify(errorEnvelope(error), null, 2)}\n`);
-    process.exit(1);
+    process.exitCode = 1;
+    await writeStderr(`${JSON.stringify(errorEnvelope(error), null, 2)}\n`);
   });
