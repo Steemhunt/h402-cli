@@ -43,4 +43,12 @@ describe("doc examples stay runnable against the catalog contract", () => {
     expect(text).not.toContain("| `--wallet 0x...` | all |");
     expect(text).not.toContain("| `--api-url <url>` | all |");
   });
+
+  it("core README scopes selectExactRequirement to h402 canonical challenges", () => {
+    const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
+    expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");
+    expect(text).toContain("strict CAIP-2 `eip155:8453`");
+    expect(text).toContain("short-form network names");
+    expect(text).toContain("supply your own selector");
+  });
 });

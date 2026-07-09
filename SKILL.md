@@ -95,4 +95,4 @@ on a retry — h402 dedupes by it, so a resent paid request never double-charges
 
 - All payments are Base USDC over x402; the CLI is open-source and non-custodial.
 - If you run `h402 auth`, bonus credits are drawn before USDC; pass `--no-credit` to force USDC.
-- For custom (non-CLI) integration, import [`@h402/core`](./packages/core) and plug in your own signer.
+- For custom (non-CLI) integration, import [`@h402/core`](./packages/core) and plug in your own signer. Its `selectExactRequirement` helper is scoped to h402 canonical Base USDC challenges; non-h402 x402 servers with short network names or multi-amount menus should use the primitives with a custom selector.
