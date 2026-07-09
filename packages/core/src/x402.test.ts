@@ -41,6 +41,13 @@ describe("headers", () => {
     expect(paymentRequiredFromResponse(new Headers(), paymentRequired)).toEqual(paymentRequired);
   });
 
+  it("prefers a valid response body over a slim PAYMENT-REQUIRED header", () => {
+    const slim = { x402Version: 2, accepts: [{ ...baseRequirement, extra: { quoteId: "slim" } }] };
+    const rich = { x402Version: 2, accepts: [{ ...baseRequirement, extra: { quoteId: "rich", inputSchema: { type: "object" } } }] };
+    const headers = new Headers({ "PAYMENT-REQUIRED": encodeX402Header(slim) });
+    expect(paymentRequiredFromResponse(headers, rich)).toEqual(rich);
+  });
+
   it("ignores malformed PAYMENT-REQUIRED headers instead of throwing raw decoder errors", () => {
     const headers = new Headers({ "PAYMENT-REQUIRED": "not base64" });
     expect(paymentRequiredFromResponse(headers, { error: "bad challenge" })).toBeNull();

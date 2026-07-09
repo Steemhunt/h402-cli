@@ -23,20 +23,23 @@ export function decodeX402Header<T>(value: string) {
   return JSON.parse(new TextDecoder().decode(bytes)) as T;
 }
 
-/** Read an x402 `PAYMENT-REQUIRED` from a response header, falling back to the body. */
-export function paymentRequiredFromResponse(headers: Headers, body: unknown): X402PaymentRequired | null {
-  const header = headers.get(X402_HEADERS.paymentRequired);
-  const parsedHeader = parsePaymentRequiredHeader(header);
-  if (parsedHeader) {
-    return parsedHeader;
-  }
-
+function paymentRequiredFromBody(body: unknown): X402PaymentRequired | null {
   if (body && typeof body === "object" && "x402Version" in body && "accepts" in body) {
     const payload = body as X402PaymentRequired;
     return payload.x402Version === X402_VERSION && Array.isArray(payload.accepts) ? payload : null;
   }
-
   return null;
+}
+
+/** Read an x402 `PAYMENT-REQUIRED` from a rich response body, falling back to the slim header. */
+export function paymentRequiredFromResponse(headers: Headers, body: unknown): X402PaymentRequired | null {
+  const parsedBody = paymentRequiredFromBody(body);
+  if (parsedBody) {
+    return parsedBody;
+  }
+
+  const header = headers.get(X402_HEADERS.paymentRequired);
+  return parsePaymentRequiredHeader(header);
 }
 
 export function parsePaymentRequiredHeader(value: string | null): X402PaymentRequired | null {
