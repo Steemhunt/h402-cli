@@ -81,9 +81,11 @@ machine), attaches it as a `PAYMENT-SIGNATURE` header, and retries the same requ
 are charged the exact per-call price and get the result back. Pass `--max-usd <amount>`
 (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse
 signing a challenge above that USDC cap. Paid call output includes `h402.signedAmount`
-as a receipt of the amount signed. `--idempotency-key` is double-charge protection, not
-result replay: reuse the same key after a lost response, but do not switch to a new key
-unless you intentionally accept buying the call again.
+as a receipt of the amount signed. The CLI uses the first 402 response's `Date` header
+when building the EIP-3009 validity window, reducing client clock-skew failures on paid
+calls. `--idempotency-key` is double-charge protection, not result replay: reuse the
+same key after a lost response, but do not switch to a new key unless you intentionally
+accept buying the call again.
 
 ## Running non-interactively (agents)
 

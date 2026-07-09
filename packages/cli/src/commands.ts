@@ -87,6 +87,16 @@ function withIdempotencyKey(error: unknown, idempotencyKey: string) {
 
 type ResolvedWallet = { name: string; address: string };
 
+function rejectExtraPositionals(args: ParsedArgs, maxPositionals: number, commandForHelp: string, hint?: string) {
+  const extra = args.positional.slice(maxPositionals);
+  if (extra.length === 0) {
+    return;
+  }
+  const label = extra.length === 1 ? "Unexpected positional argument" : "Unexpected positional arguments";
+  const rendered = extra.map((value) => JSON.stringify(value)).join(", ");
+  throw new Error(`${label}: ${rendered}. ${hint ?? `Run: h402 ${commandForHelp} --help`}`);
+}
+
 function isMissingOwsWalletError(error: unknown) {
   return error instanceof Error && /(?:not found|does not exist|no wallet|unknown wallet|wallet .* missing)/i.test(error.message);
 }
@@ -197,6 +207,7 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
 
 export async function walletCommand(args: ParsedArgs) {
   const subcommand = requireValue(args.positional[1], "wallet subcommand is required");
+  rejectExtraPositionals(args, 2, `wallet ${subcommand}`);
   const name = walletName(args);
   const config = await loadConfig();
 
@@ -259,6 +270,7 @@ export async function walletCommand(args: ParsedArgs) {
 }
 
 export async function authCommand(args: ParsedArgs) {
+  rejectExtraPositionals(args, 1, "auth");
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const { name, address } = await resolveSigningWallet(args, config);
@@ -308,6 +320,7 @@ export async function searchCommand(args: ParsedArgs) {
 }
 
 export async function creditsCommand(args: ParsedArgs) {
+  rejectExtraPositionals(args, 1, "credits");
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const token = config.sessions[apiUrl];
@@ -319,6 +332,7 @@ export async function creditsCommand(args: ParsedArgs) {
 }
 
 export async function quoteCommand(args: ParsedArgs) {
+  rejectExtraPositionals(args, 2, "quote", "Did you forget --json for a request body or --query for URL parameters? Run: h402 quote --help");
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const routeId = requireValue(args.positional[1], "route id is required");
@@ -394,7 +408,15 @@ function withSignedAmount(body: unknown, accepted: { amount: string }) {
   return { data: body, h402: { signedAmount } };
 }
 
+function authorizationClockFromResponseDate(headers: Headers) {
+  const date = headers.get("date");
+  if (!date) return undefined;
+  const millis = Date.parse(date);
+  return Number.isFinite(millis) ? Math.floor(millis / 1000) : undefined;
+}
+
 export async function callCommand(args: ParsedArgs) {
+  rejectExtraPositionals(args, 2, "call", "Did you forget --json for a request body or --query for URL parameters? Run: h402 call --help");
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const routeId = requireValue(args.positional[1], "route id is required");
@@ -439,7 +461,8 @@ export async function callCommand(args: ParsedArgs) {
         paymentRequired,
         walletAddress,
         walletName: name,
-        passphrase
+        passphrase,
+        authorizationNow: authorizationClockFromResponseDate(first.headers)
       })
     );
     const paid = await requestJson<unknown>(apiUrl, path, {

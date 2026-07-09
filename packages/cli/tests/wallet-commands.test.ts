@@ -113,6 +113,11 @@ describe("walletCommand balance/fund wallet selection", () => {
     });
   });
 
+  it("rejects extra wallet positionals before OWS work", async () => {
+    await expect(walletCommand(args({ name: "agent" }, "create", '{"ignored":true}'))).rejects.toThrow(/Unexpected positional argument/);
+    expect(createOwsWallet).not.toHaveBeenCalled();
+  });
+
   it("accepts --name and --wallet together when they agree", async () => {
     await walletCommand(args({ name: "alt", wallet: ADDR_ALT }, "balance"));
     expect(getBaseUsdcBalance).toHaveBeenCalledWith(ADDR_ALT);
