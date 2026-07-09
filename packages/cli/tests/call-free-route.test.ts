@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedArgs } from "../src/utils";
 
+const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+
 const { loadConfig, updateConfig, getOwsWallet, listOwsWallets, ADDR } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
   updateConfig: vi.fn(),
@@ -66,7 +68,7 @@ describe("callCommand free routes", () => {
   });
 
   it("still requires a local wallet once the first response asks for payment", async () => {
-    const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", asset: "0x", amount: "1", payTo: ADDR, maxTimeoutSeconds: 60 }] };
+    const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", asset: BASE_USDC, amount: "1", payTo: ADDR, maxTimeoutSeconds: 60 }] };
     const fetch = vi.fn(async () => res(402, challenge));
     vi.stubGlobal("fetch", fetch);
 

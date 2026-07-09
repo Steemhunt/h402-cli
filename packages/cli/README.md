@@ -61,6 +61,7 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 | `--passphrase [<s>]` | create, auth, call | Passphrase for a passphrase-protected wallet; omit the value to be prompted (or `H402_WALLET_PASSPHRASE`) |
 | `--no-passphrase` | create, auth, call | Force passphrase-less signing even if `H402_WALLET_PASSPHRASE` is set (the default needs no flag) |
 | `--no-credit` | call | Ignore bonus credits and pay x402 only |
+| `--max-usd <usd>` | call | Optional client-side cap; refuse to sign if the quoted Base USDC amount exceeds it |
 | `--idempotency-key <uuid>` | call | Stable key for safe retries (default: random) |
 | `--limit <n>` | search | Max results (default `20`) |
 
@@ -78,14 +79,17 @@ h402 call web/search --json '{"query":"..."}'
 
 You're charged the exact per-call price (most routes are $0.001–$0.05). Because the retry
 reuses the idempotency key, a resent paid request never double-charges. Run `h402 quote`
-first to see the price without paying. If you've run `h402 auth`, bonus credits are drawn
+first to see the price without paying. Pass `--max-usd <amount>` on `call` (or store a
+string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse signing a
+challenge above that USDC cap. Paid call output includes `h402.signedAmount` so agents
+can record the amount they signed. If you've run `h402 auth`, bonus credits are drawn
 before USDC unless you pass `--no-credit`.
 
 ## Agents & automation
 
 Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
 
-A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, optional `paymentTransaction`, and optional `followUp`. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
+A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, optional `paymentTransaction`, optional `followUp`, and optional `signedAmount` for paid x402 calls. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
 
 Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes.
 

@@ -6,7 +6,7 @@ import { CliError } from "./errors.js";
 import { createOwsWallet, getOwsWallet, listOwsWallets, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
 import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, type ParsedArgs } from "./utils.js";
-import { createPaymentSignatureHeader, paymentRequiredFromResponse, X402_HEADERS } from "./x402.js";
+import { createPaymentSignatureHeader, paymentRequiredFromResponse, selectBaseUsdcRequirement, X402_HEADERS } from "./x402.js";
 
 const DEFAULT_WALLET_NAME = "h402";
 
@@ -341,6 +341,59 @@ export async function quoteCommand(args: ParsedArgs) {
   await printJson(assertOk(result));
 }
 
+function parseUsdMicros(raw: string, source: string) {
+  if (!/^\d+(?:\.\d{1,6})?$/.test(raw)) {
+    throw new Error(`${source} must be a non-negative USD amount with at most 6 decimal places (got "${raw}").`);
+  }
+  const [whole, fractional = ""] = raw.split(".");
+  const micros = BigInt(whole) * 1_000_000n + BigInt(fractional.padEnd(6, "0"));
+  if (micros < 0n) {
+    throw new Error(`${source} must be non-negative (got "${raw}").`);
+  }
+  return micros;
+}
+
+function parseBaseUsdcMicros(raw: unknown, source: string) {
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
+    throw new Error(`${source} must be an unsigned integer amount in USDC micros (got ${JSON.stringify(raw)}).`);
+  }
+  return BigInt(raw);
+}
+
+function formatUsdMicros(amount: string | bigint) {
+  const micros = typeof amount === "bigint" ? amount : parseBaseUsdcMicros(amount, "x402 payment amount");
+  const whole = micros / 1_000_000n;
+  const fractional = (micros % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return fractional ? `${whole}.${fractional}` : whole.toString();
+}
+
+function maxUsd(args: ParsedArgs, config: CliConfig) {
+  if (args.flags["max-usd"] === true) {
+    throw new Error("Flag --max-usd requires a USD amount, for example --max-usd 0.05.");
+  }
+  const raw = flagString(args.flags, "max-usd", config.maxUsd);
+  return raw === undefined ? undefined : { raw, micros: parseUsdMicros(raw, "--max-usd / config.maxUsd") };
+}
+
+function assertUnderMaxUsd(amount: string, cap: ReturnType<typeof maxUsd>) {
+  const amountMicros = parseBaseUsdcMicros(amount, "x402 payment amount");
+  if (!cap) return;
+  if (amountMicros > cap.micros) {
+    throw new Error(`Payment amount $${formatUsdMicros(amountMicros)} USDC exceeds --max-usd ${cap.raw}; refusing to sign.`);
+  }
+}
+
+function withSignedAmount(body: unknown, accepted: { amount: string }) {
+  const amountMicros = parseBaseUsdcMicros(accepted.amount, "x402 payment amount");
+  const signedAmount = { amount: accepted.amount, asset: "USDC", decimals: 6, usd: formatUsdMicros(amountMicros) };
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const record = body as Record<string, unknown>;
+    const h402 = record.h402 && typeof record.h402 === "object" && !Array.isArray(record.h402) ? (record.h402 as Record<string, unknown>) : {};
+    return { ...record, h402: { ...h402, signedAmount } };
+  }
+  return { data: body, h402: { signedAmount } };
+}
+
 export async function callCommand(args: ParsedArgs) {
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
@@ -351,6 +404,7 @@ export async function callCommand(args: ParsedArgs) {
   const method = resolveMethod(args.flags, body !== undefined);
   rejectQueryOnPost(method, query);
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
+  const paymentCap = maxUsd(args, config);
   const token = config.sessions[apiUrl];
   const path = buildProxyPath(routeId, query, provider);
   const headers: Record<string, string> = {
@@ -377,6 +431,8 @@ export async function callCommand(args: ParsedArgs) {
       return;
     }
 
+    const accepted = selectBaseUsdcRequirement(paymentRequired);
+    assertUnderMaxUsd(accepted.amount, paymentCap);
     const { name, address: walletAddress } = await resolveSigningWallet(args, config);
     const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
       createPaymentSignatureHeader({
@@ -395,7 +451,7 @@ export async function callCommand(args: ParsedArgs) {
       body: body === undefined ? undefined : JSON.stringify(body)
     });
 
-    await printJson(assertOk(paid));
+    await printJson(withSignedAmount(assertOk(paid), accepted));
   } catch (error) {
     throw withIdempotencyKey(error, idempotencyKey);
   }
