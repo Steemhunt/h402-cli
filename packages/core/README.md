@@ -20,9 +20,11 @@ npm install @h402/core
 - **Headers** — `encodeX402Header` / `decodeX402Header`, `paymentRequiredFromResponse`, `parsePaymentRequiredHeader`, `parsePaymentSignatureHeader`, plus the `X402_HEADERS` names.
 - **EIP-3009** — `buildTransferAuthorization`, `createNonce`, `selectExactRequirement`.
 
+> `selectExactRequirement` is intentionally h402-opinionated: it selects the first Base USDC `exact` requirement on strict CAIP-2 `eip155:8453`, matching h402's canonical challenges. It deliberately does not replicate the h402 server's inbound tolerance for non-h402 x402 providers, such as short-form network names (`base`/`8453`) or cheapest-of-many menus. If you integrate against a non-h402 x402 server with those shapes, build on the header/types/EIP-3009 primitives and supply your own selector.
+
 ## Usage
 
-Given an x402 `402 PAYMENT-REQUIRED` challenge, build a Base USDC authorization, sign it with any EIP-712 signer, and encode the `PAYMENT-SIGNATURE` header:
+Given an h402 `402 PAYMENT-REQUIRED` challenge, build a Base USDC authorization, sign it with any EIP-712 signer, and encode the `PAYMENT-SIGNATURE` header:
 
 ```ts
 import {
