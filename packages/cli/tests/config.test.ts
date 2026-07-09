@@ -75,6 +75,16 @@ describe("loadConfig / saveConfig", () => {
     await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
   });
 
+  it("does not persist a one-shot H402_API_URL in the default config snapshot", async () => {
+    process.env.H402_API_URL = "https://staging.example";
+
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+    await saveConfig(await loadConfig());
+
+    const saved = JSON.parse(await readFile(configFile, "utf8"));
+    expect(saved.backendUrl).toBe(PROD_URL);
+  });
+
   it("round-trips a saved config", async () => {
     const config: CliConfig = {
       backendUrl: "https://staging.example",

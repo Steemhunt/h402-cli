@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { H402_HTTP_TIMEOUT_MS, requestJson } from "../src/api";
+import { H402_HTTP_TIMEOUT_MS, assertOk, requestJson } from "../src/api";
 import { CliError } from "../src/errors";
 
 function response(status: number, body: unknown) {
@@ -57,6 +57,31 @@ describe("requestJson", () => {
 
     const error = await requestJson("http://127.0.0.1:9", "/api/catalog/search?q=x").catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(CliError);
-    expect(error).toMatchObject({ message: "Request to http://127.0.0.1:9/api/catalog/search?q=x failed: ECONNREFUSED" });
+    expect(error).toMatchObject({
+      message: "Request to http://127.0.0.1:9/api/catalog/search?q=x failed: ECONNREFUSED",
+      detail: { backendUrl: "http://127.0.0.1:9", url: "http://127.0.0.1:9/api/catalog/search?q=x" }
+    });
+  });
+
+  it("carries the resolved backend URL in structured backend errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response(500, { error: { message: "boom" } }))
+    );
+
+    const result = await requestJson("https://staging.example", "/routes/auto/web/search");
+    const error = (() => {
+      try {
+        assertOk(result);
+      } catch (thrown) {
+        return thrown;
+      }
+    })();
+
+    expect(error).toBeInstanceOf(CliError);
+    expect(error).toMatchObject({
+      message: "Request failed: 500 Error: boom",
+      detail: { backendUrl: "https://staging.example", url: "https://staging.example/routes/auto/web/search", error: { message: "boom" } }
+    });
   });
 });
