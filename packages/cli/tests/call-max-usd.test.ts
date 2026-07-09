@@ -107,6 +107,20 @@ describe("callCommand --max-usd", () => {
     expect(printed.h402.signedAmount).toEqual({ amount: "1234567", asset: "USDC", decimals: 6, usd: "1.234567" });
   });
 
+  it("derives the payment authorization clock from the first response Date header", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(res(402, challenge("50000"), { Date: "Thu, 01 Jan 1970 00:16:40 GMT" }))
+      .mockResolvedValueOnce(res(200, { data: { ok: true }, h402: { provider: "demo" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    await callCommand(args());
+
+    const typedData = signOwsTypedData.mock.calls[0]?.[1] as { message: { validAfter: string; validBefore: string } };
+    expect(typedData.message.validAfter).toBe("940");
+    expect(typedData.message.validBefore).toBe("1060");
+  });
+
   it.each(["0x1234", 50000, ["50000"]])("refuses malformed x402 amount %s before signing", async (amount) => {
     const fetch = vi.fn().mockResolvedValueOnce(res(402, challenge(amount)));
     vi.stubGlobal("fetch", fetch);
