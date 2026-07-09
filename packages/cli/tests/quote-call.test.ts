@@ -20,8 +20,8 @@ function stubFetch(status: number, body: unknown, headers: Record<string, string
   vi.stubGlobal("fetch", vi.fn(async () => res(status, body, headers)));
 }
 
-function args(routeId: string, flags: ParsedArgs["flags"] = {}): ParsedArgs {
-  return { positional: ["cmd", routeId], flags };
+function args(routeId: string, flags: ParsedArgs["flags"] = {}, ...extra: string[]): ParsedArgs {
+  return { positional: ["cmd", routeId, ...extra], flags };
 }
 
 const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", asset: "0x", amount: "1", payTo: "0x", maxTimeoutSeconds: 60 }] };
@@ -71,6 +71,20 @@ describe("quote/call exit codes on backend responses", () => {
     stubFetch(200, { result: 42 });
     await callCommand(args("web/free"));
     expect(stdout).toHaveBeenCalledWith(expect.stringContaining("42"));
+  });
+
+  it("rejects extra quote positionals before sending a request", async () => {
+    const fetch = vi.fn(async () => res(200, { result: 42 }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(quoteCommand(args("crypto/fear-greed", {}, '{"limit":5}'))).rejects.toThrow(/Unexpected positional argument.*--json/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects extra call positionals before sending a request", async () => {
+    const fetch = vi.fn(async () => res(200, { result: 42 }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(callCommand(args("crypto/fear-greed", {}, '{"limit":5}'))).rejects.toThrow(/Unexpected positional argument.*--json/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("call surfaces the HTTP status, not the literal null, on an empty-body non-2xx", async () => {
