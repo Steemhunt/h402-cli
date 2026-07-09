@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildProxyPath, parseArgs, parseQueryFlag, printJson, resolveMethod } from "../src/utils";
+import { buildProxyPath, parseArgs, parseJsonFlag, parseQueryFlag, printJson, resolveMethod } from "../src/utils";
 
 describe("printJson", () => {
   afterEach(() => {
@@ -38,6 +38,13 @@ describe("parseArgs", () => {
       flags: { name: "agent", "no-credit": true }
     });
   });
+
+  it("parses --flag=value syntax", () => {
+    expect(parseArgs(["quote", "weather/current", "--query={\"q\":\"Seoul\"}", "--provider=auto"])).toEqual({
+      positional: ["quote", "weather/current"],
+      flags: { query: '{"q":"Seoul"}', provider: "auto" }
+    });
+  });
 });
 
 describe("buildProxyPath", () => {
@@ -69,13 +76,27 @@ describe("buildProxyPath", () => {
   });
 });
 
+describe("parseJsonFlag", () => {
+  it("parses request bodies from a JSON flag", () => {
+    expect(parseJsonFlag({ json: '{"query":"Seoul"}' })).toEqual({ query: "Seoul" });
+  });
+
+  it("names --json and the expected shape when parsing fails", () => {
+    expect(() => parseJsonFlag({ json: "{query: hi}" })).toThrow(/Flag --json must be valid JSON.*--json '\{"query":"Seoul"\}'/);
+  });
+});
+
 describe("parseQueryFlag", () => {
   it("parses query parameters from a JSON object flag", () => {
     expect(parseQueryFlag({ query: "{\"placeId\":\"ChIJ123\"}" })).toEqual({ placeId: "ChIJ123" });
   });
 
   it("rejects non-object query flags", () => {
-    expect(() => parseQueryFlag({ query: "[\"placeId\"]" })).toThrow("--query must be a JSON object");
+    expect(() => parseQueryFlag({ query: "[\"placeId\"]" })).toThrow(/Flag --query must be a JSON object/);
+  });
+
+  it("suggests JSON object syntax for key=value query input", () => {
+    expect(() => parseQueryFlag({ query: "q=Seoul" })).toThrow(/--query must be a JSON object.*key=value syntax is not supported/);
   });
 });
 
@@ -86,12 +107,16 @@ describe("resolveMethod", () => {
   });
 
   it("honors and upper-cases an explicit --method", () => {
-    expect(resolveMethod({ method: "GET" }, true)).toBe("GET");
+    expect(resolveMethod({ method: "GET" }, false)).toBe("GET");
     expect(resolveMethod({ method: "post" }, false)).toBe("POST");
   });
 
   it("rejects an unsupported --method instead of forwarding it", () => {
     expect(() => resolveMethod({ method: "PUT" }, false)).toThrow(/--method must be GET or POST \(got "PUT"\)/);
     expect(() => resolveMethod({ method: "delete" }, false)).toThrow(/--method must be GET or POST/);
+  });
+
+  it("rejects GET combined with a JSON body", () => {
+    expect(() => resolveMethod({ method: "GET" }, true)).toThrow(/--method GET cannot be combined with --json/);
   });
 });

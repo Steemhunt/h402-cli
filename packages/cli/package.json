@@ -17,6 +17,12 @@
     "directory": "packages/cli"
   },
   "homepage": "https://h402.hunt.town",
+  "bugs": {
+    "url": "https://github.com/Steemhunt/h402-cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "x402",
     "h402",

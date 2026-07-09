@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { assertOk, requestJson } from "./api.js";
+import { BASE_USDC_BALANCE_ASSET, BASE_USDC_BALANCE_NETWORK, getBaseUsdcBalance } from "./base-usdc-balance.js";
+import { backendUrl, loadConfig, updateConfig, type CliConfig } from "./config.js";
 import { CliError } from "./errors.js";
-import { backendUrl, loadConfig, saveConfig, type CliConfig } from "./config.js";
-import { createOwsWallet, runOwsCli, signOwsMessage } from "./ows.js";
+import { createOwsWallet, getOwsWallet, listOwsWallets, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
-import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, writeStdout, type ParsedArgs } from "./utils.js";
+import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, type ParsedArgs } from "./utils.js";
 import { createPaymentSignatureHeader, paymentRequiredFromResponse, X402_HEADERS } from "./x402.js";
 
 const DEFAULT_WALLET_NAME = "h402";
@@ -84,6 +85,69 @@ function withIdempotencyKey(error: unknown, idempotencyKey: string) {
   return new CliError(message, detail);
 }
 
+type ResolvedWallet = { name: string; address: string };
+
+function isMissingOwsWalletError(error: unknown) {
+  return error instanceof Error && /(?:not found|does not exist|no wallet|unknown wallet|wallet .* missing)/i.test(error.message);
+}
+
+function isExistingOwsWalletError(error: unknown) {
+  return error instanceof Error && /already exists/i.test(error.message);
+}
+
+async function adoptOwsWalletByName(name: string, config: CliConfig): Promise<ResolvedWallet | undefined> {
+  try {
+    const wallet = await getOwsWallet(name);
+    const resolved = { name: wallet.name || name, address: wallet.address.toLowerCase() };
+    config.wallets[resolved.name] = { address: resolved.address };
+    await updateConfig((current) => {
+      current.wallets[resolved.name] = { address: resolved.address };
+    });
+    return resolved;
+  } catch (error) {
+    if (isMissingOwsWalletError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function adoptOwsWalletByAddress(address: string, config: CliConfig): Promise<ResolvedWallet | undefined> {
+  const wallets = await listOwsWallets();
+  const match = wallets.find((wallet) => wallet.address.toLowerCase() === address);
+  if (!match) return undefined;
+  const resolved = { name: match.name, address: match.address.toLowerCase() };
+  config.wallets[resolved.name] = { address: resolved.address };
+  await updateConfig((current) => {
+    current.wallets[resolved.name] = { address: resolved.address };
+  });
+  return resolved;
+}
+
+function normalizeOwsWallets(wallets: ResolvedWallet[]) {
+  return wallets.map((wallet) => ({ name: wallet.name, address: wallet.address.toLowerCase() }));
+}
+
+async function restoreOwsWallets(config: CliConfig) {
+  const wallets = await listOwsWallets();
+  let changed = false;
+  const restored = normalizeOwsWallets(wallets);
+  for (const wallet of restored) {
+    if (config.wallets[wallet.name]?.address?.toLowerCase() !== wallet.address) {
+      config.wallets[wallet.name] = { address: wallet.address };
+      changed = true;
+    }
+  }
+  if (changed) {
+    await updateConfig((current) => {
+      for (const wallet of restored) {
+        current.wallets[wallet.name] = { address: wallet.address };
+      }
+    });
+  }
+  return restored;
+}
+
 // Resolve the wallet that will BOTH sign and own the request address, so the two
 // can never silently diverge. The OWS signer is keyed by wallet *name*, so the
 // address presented upstream must be that wallet's address — not an unrelated
@@ -97,7 +161,14 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
   if (explicitName) {
     const address = config.wallets[explicitName]?.address?.toLowerCase();
     if (!address) {
-      throw new Error(`No address known for wallet "${explicitName}". Run: h402 wallet create --name ${explicitName}`);
+      const adopted = await adoptOwsWalletByName(explicitName, config);
+      if (adopted) {
+        if (explicitAddress && explicitAddress !== adopted.address) {
+          throw new Error(`--wallet ${explicitAddress} does not match wallet "${explicitName}" (${adopted.address}). Omit --wallet or pass the wallet that owns this address.`);
+        }
+        return adopted;
+      }
+      throw new Error(`No address known for wallet "${explicitName}". Run: h402 wallet create --name ${explicitName}, or h402 wallet restore to re-adopt existing OWS wallets.`);
     }
     if (explicitAddress && explicitAddress !== address) {
       throw new Error(`--wallet ${explicitAddress} does not match wallet "${explicitName}" (${address}). Omit --wallet or pass the wallet that owns this address.`);
@@ -108,14 +179,18 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
   if (explicitAddress) {
     const owner = Object.entries(config.wallets).find(([, wallet]) => wallet.address?.toLowerCase() === explicitAddress);
     if (!owner) {
-      throw new Error(`No local wallet owns address ${explicitAddress}. Create it (h402 wallet create) or select one with --name.`);
+      const adopted = await adoptOwsWalletByAddress(explicitAddress, config);
+      if (adopted) return adopted;
+      throw new Error(`No local wallet owns address ${explicitAddress}. Create it (h402 wallet create), run h402 wallet restore to re-adopt existing OWS wallets, or select one with --name.`);
     }
     return { name: owner[0], address: explicitAddress };
   }
 
   const address = config.wallets[DEFAULT_WALLET_NAME]?.address?.toLowerCase();
   if (!address) {
-    throw new Error(`No address known for wallet "${DEFAULT_WALLET_NAME}". Run: h402 wallet create --name ${DEFAULT_WALLET_NAME} (or pass --name/--wallet).`);
+    const adopted = await adoptOwsWalletByName(DEFAULT_WALLET_NAME, config);
+    if (adopted) return adopted;
+    throw new Error(`No address known for wallet "${DEFAULT_WALLET_NAME}". Run: h402 wallet create --name ${DEFAULT_WALLET_NAME} (or pass --name/--wallet), or h402 wallet restore to re-adopt existing OWS wallets.`);
   }
   return { name: DEFAULT_WALLET_NAME, address };
 }
@@ -126,9 +201,19 @@ export async function walletCommand(args: ParsedArgs) {
   const config = await loadConfig();
 
   if (subcommand === "create") {
-    const wallet = await createOwsWallet(name, await createPassphrase(args));
+    let wallet: ResolvedWallet;
+    try {
+      wallet = await createOwsWallet(name, await createPassphrase(args));
+    } catch (error) {
+      if (isExistingOwsWalletError(error)) {
+        throw new Error(`Wallet "${name}" already exists in the OWS vault. Run: h402 wallet address --name ${name} to re-adopt and print it, or h402 wallet restore to re-adopt all OWS wallets.`);
+      }
+      throw error;
+    }
     config.wallets[name] = { address: wallet.address };
-    await saveConfig(config);
+    await updateConfig((current) => {
+      current.wallets[name] = { address: wallet.address };
+    });
     await printJson({ wallet: { name, address: wallet.address } });
     return;
   }
@@ -138,24 +223,35 @@ export async function walletCommand(args: ParsedArgs) {
     return;
   }
 
+  if (subcommand === "list") {
+    await printJson({ wallets: normalizeOwsWallets(await listOwsWallets()) });
+    return;
+  }
+
+  if (subcommand === "restore") {
+    await printJson({ wallets: await restoreOwsWallets(config) });
+    return;
+  }
+
   if (subcommand === "balance") {
-    // OWS keys wallets by name; resolve --name/--wallet to the owning wallet so
-    // `--wallet 0x...` selects the same wallet here as it does for signing.
     const { name: signingName, address } = await resolveSigningWallet(args, config);
-    // OWS prints a human balance table; wrap it in a stable JSON envelope so the
-    // agent-facing JSON-stdout contract holds (the raw text is preserved as-is —
-    // parsing the human table into numbers would be fragile for a money tool).
-    const raw = await runOwsCli(["fund", "balance", "--wallet", signingName, "--chain", "base"]);
-    await printJson({ wallet: { name: signingName, address }, chain: "base", balance: { raw } });
+    await printJson({
+      wallet: { name: signingName, address },
+      network: BASE_USDC_BALANCE_NETWORK,
+      asset: BASE_USDC_BALANCE_ASSET,
+      balance: await getBaseUsdcBalance(address)
+    });
     return;
   }
 
   if (subcommand === "fund") {
-    // `ows fund deposit` opens an interactive MoonPay deposit flow, so this is a
-    // human/passthrough command (documented as such) — not part of the JSON contract.
-    const { name: signingName } = await resolveSigningWallet(args, config);
-    const output = await runOwsCli(["fund", "deposit", "--wallet", signingName, "--chain", "8453", "--token", "USDC"]);
-    await writeStdout(`${output}\n`);
+    const { name: signingName, address } = await resolveSigningWallet(args, config);
+    await printJson({
+      wallet: { name: signingName, address },
+      network: "base",
+      token: "USDC",
+      instructions: `Send Base USDC to this address from an exchange, bridge, or another wallet, then run h402 wallet balance --name ${signingName}.`
+    });
     return;
   }
 
@@ -180,10 +276,25 @@ export async function authCommand(args: ParsedArgs) {
     })
   ).session;
 
-  config.backendUrl = apiUrl;
-  config.sessions[apiUrl] = session.token;
-  await saveConfig(config);
-  await printJson({ session });
+  await updateConfig((current) => {
+    current.backendUrl = apiUrl;
+    current.sessions[apiUrl] = session.token;
+  });
+  await printJson({ session: { address: session.address, expiresAt: session.expiresAt } });
+}
+
+function searchLimit(flags: Record<string, string | boolean>) {
+  const raw = flagString(flags, "limit", "20") as string;
+  if (!/^\d+$/.test(raw) || Number(raw) < 1) {
+    throw new Error(`Flag --limit must be a positive integer (got "${raw}").`);
+  }
+  return raw;
+}
+
+function rejectQueryOnPost(method: "GET" | "POST", query: Record<string, unknown> | undefined) {
+  if (method === "POST" && query && Object.keys(query).length > 0) {
+    throw new Error("Flag --query cannot be combined with POST requests; use --query for GET parameters or --json for a POST body, not both.");
+  }
 }
 
 export async function searchCommand(args: ParsedArgs) {
@@ -191,9 +302,8 @@ export async function searchCommand(args: ParsedArgs) {
   const query = requireValue(args.positional.slice(1).join(" ").trim() || undefined, 'search query is required (e.g. h402 search "web search")');
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
-  const result = assertOk(
-    await requestJson(apiUrl, `/api/catalog/search?q=${encodeURIComponent(query)}&limit=${flagString(args.flags, "limit", "20")}`)
-  );
+  const params = new URLSearchParams({ q: query, limit: searchLimit(args.flags) });
+  const result = assertOk(await requestJson(apiUrl, `/api/catalog/search?${params.toString()}`));
   await printJson(result);
 }
 
@@ -216,6 +326,7 @@ export async function quoteCommand(args: ParsedArgs) {
   const query = parseQueryFlag(args.flags);
   const provider = flagString(args.flags, "provider");
   const method = resolveMethod(args.flags, body !== undefined);
+  rejectQueryOnPost(method, query);
   const result = await requestJson(apiUrl, buildProxyPath(routeId, query, provider), {
     method,
     body: body === undefined ? undefined : JSON.stringify(body)
@@ -238,9 +349,9 @@ export async function callCommand(args: ParsedArgs) {
   const query = parseQueryFlag(args.flags);
   const provider = flagString(args.flags, "provider");
   const method = resolveMethod(args.flags, body !== undefined);
+  rejectQueryOnPost(method, query);
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
   const token = config.sessions[apiUrl];
-  const { name, address: walletAddress } = await resolveSigningWallet(args, config);
   const path = buildProxyPath(routeId, query, provider);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
@@ -266,6 +377,7 @@ export async function callCommand(args: ParsedArgs) {
       return;
     }
 
+    const { name, address: walletAddress } = await resolveSigningWallet(args, config);
     const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
       createPaymentSignatureHeader({
         paymentRequired,

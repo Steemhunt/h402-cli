@@ -13,14 +13,18 @@ const DOC_FILES: Record<string, string> = {
 
 describe("doc examples stay runnable against the catalog contract", () => {
   for (const [label, file] of Object.entries(DOC_FILES)) {
-    it(`${label}: web/search call examples send no provider-native field on the auto route`, () => {
-      // web/search's `limit` is provider-native: an unpinned (auto) example that sends it
-      // 422s on the first call (provider_native_field_requires_pinning). A documented call
-      // must omit it unless it also pins the owning provider with --provider.
-      const offenders = readFileSync(file, "utf8")
-        .split("\n")
-        .filter((line) => line.includes("h402 call web/search") && line.includes("limit") && !line.includes("--provider"));
-      expect(offenders).toEqual([]);
+    it(`${label}: does not describe web/search limit as provider-specific`, () => {
+      const text = readFileSync(file, "utf8");
+      expect(text).toMatch(/`web\/search` (accepts common fields such as `query` and `limit`|fields such as `query` and `limit` are common fields)/);
+      expect(text).not.toContain('Provider-specific fields (e.g. `limit` on `web/search`)');
+    });
+    it(`${label}: documents the current call envelope and async follow-up contract`, () => {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain('"meta"?: <contract metadata>');
+      expect(text).toContain("paymentTransaction");
+      expect(text).toContain("h402.followUp");
+      expect(text).toContain("params.jobId");
+      expect(text).not.toContain('Provider-specific fields (e.g. `limit` on `web/search`)');
     });
   }
 });
