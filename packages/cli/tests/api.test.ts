@@ -26,8 +26,10 @@ describe("requestJson", () => {
     await expect(requestJson("https://api.example", "/routes/auto/web/search")).resolves.toMatchObject({ status: 200, body: { ok: true } });
 
     expect(H402_HTTP_TIMEOUT_MS).toBeGreaterThanOrEqual(450_000);
-    const init = fetch.mock.calls[0]?.[1] as { dispatcher?: unknown } | undefined;
+    const init = fetch.mock.calls[0]?.[1] as { dispatcher?: unknown; headers?: HeadersInit } | undefined;
     expect(init?.dispatcher).toBeTruthy();
+    const userAgent = new Headers(init?.headers).get("user-agent");
+    expect(userAgent).toMatch(/^h402-cli\/\d+\.\d+\.\d+/);
   });
 
   it("does not forward the CLI-only token option into fetch init", async () => {

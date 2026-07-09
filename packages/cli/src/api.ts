@@ -1,5 +1,6 @@
 import { Agent } from "undici";
 import { CliError } from "./errors.js";
+import { getVersion } from "./help.js";
 
 export const H402_HTTP_TIMEOUT_MS = 450_000;
 
@@ -39,6 +40,9 @@ export async function requestJson<T>(
 ): Promise<ApiResponse<T>> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
+  if (!headers.has("user-agent")) {
+    headers.set("user-agent", `h402-cli/${getVersion()}`);
+  }
 
   if (init.body && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
