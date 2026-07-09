@@ -89,10 +89,15 @@ describe("quote/call exit codes on backend responses", () => {
     stubFetch(422, backend);
     const error = await callCommand(args("web/search", { "idempotency-key": "idem-123" })).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(CliError);
-    expect(errorEnvelope(error)).toEqual({
+    expect(errorEnvelope(error)).toMatchObject({
       error: {
         message: "Request failed: 422: pin it (idempotency-key: idem-123)",
-        detail: { idempotencyKey: "idem-123", ...backend }
+        detail: {
+          idempotencyKey: "idem-123",
+          backendUrl: "https://test.example",
+          url: "https://test.example/routes/auto/web/search",
+          ...backend
+        }
       }
     });
   });

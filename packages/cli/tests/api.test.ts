@@ -57,19 +57,62 @@ describe("requestJson", () => {
 
     const error = await requestJson("http://127.0.0.1:9", "/api/catalog/search?q=x").catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(CliError);
-    expect(error).toMatchObject({ message: "Request to http://127.0.0.1:9/api/catalog/search?q=x failed: ECONNREFUSED" });
+    expect(error).toMatchObject({
+      message: "Request to http://127.0.0.1:9/api/catalog/search?q=x failed: ECONNREFUSED",
+      detail: { backendUrl: "http://127.0.0.1:9", url: "http://127.0.0.1:9/api/catalog/search?q=x" }
+    });
+  });
+
+  it("carries the resolved backend URL in structured backend errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response(500, { error: { message: "boom" } }))
+    );
+
+    const result = await requestJson("https://staging.example", "/routes/auto/web/search");
+    const error = (() => {
+      try {
+        assertOk(result);
+      } catch (thrown) {
+        return thrown;
+      }
+    })();
+
+    expect(error).toBeInstanceOf(CliError);
+    expect(error).toMatchObject({
+      message: "Request failed: 500 Error: boom",
+      detail: { backendUrl: "https://staging.example", url: "https://staging.example/routes/auto/web/search", error: { message: "boom" } }
+    });
   });
 
   for (const code of ["idempotency_key_already_used", "idempotency_key_in_progress"]) {
     it(`adds no-double-charge guidance for ${code}`, () => {
       const result = {
+        backendUrl: "https://staging.example",
+        url: "https://staging.example/routes/auto/web/search",
         status: 409,
         statusText: "Conflict",
         headers: new Headers(),
         body: { error: { code, message: "idempotency key conflict" } }
       };
 
-      expect(() => assertOk(result)).toThrow(/do NOT sign or pay with a new idempotency key/i);
+      const error = (() => {
+        try {
+          assertOk(result);
+        } catch (thrown) {
+          return thrown;
+        }
+      })();
+
+      expect(error).toBeInstanceOf(CliError);
+      expect(error).toMatchObject({
+        message: expect.stringMatching(/do NOT sign or pay with a new idempotency key/i),
+        detail: {
+          backendUrl: "https://staging.example",
+          url: "https://staging.example/routes/auto/web/search",
+          error: { code, message: "idempotency key conflict" }
+        }
+      });
     });
   }
 });
