@@ -82,8 +82,10 @@ reuses the idempotency key, a resent paid request never double-charges. Run `h40
 first to see the price without paying. Pass `--max-usd <amount>` on `call` (or store a
 string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse signing a
 challenge above that USDC cap. Paid call output includes `h402.signedAmount` so agents
-can record the amount they signed. If you've run `h402 auth`, bonus credits are drawn
-before USDC unless you pass `--no-credit`.
+can record the amount they signed. The CLI uses the first 402 response's `Date` header
+when building the EIP-3009 validity window, reducing client clock-skew failures on paid
+calls. If you've run `h402 auth`, bonus credits are drawn before USDC unless you pass
+`--no-credit`.
 
 ## Agents & automation
 

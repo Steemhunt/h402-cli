@@ -408,6 +408,13 @@ function withSignedAmount(body: unknown, accepted: { amount: string }) {
   return { data: body, h402: { signedAmount } };
 }
 
+function authorizationClockFromResponseDate(headers: Headers) {
+  const date = headers.get("date");
+  if (!date) return undefined;
+  const millis = Date.parse(date);
+  return Number.isFinite(millis) ? Math.floor(millis / 1000) : undefined;
+}
+
 export async function callCommand(args: ParsedArgs) {
   rejectExtraPositionals(args, 2, "call", "Did you forget --json for a request body or --query for URL parameters? Run: h402 call --help");
   const config = await loadConfig();
@@ -454,7 +461,8 @@ export async function callCommand(args: ParsedArgs) {
         paymentRequired,
         walletAddress,
         walletName: name,
-        passphrase
+        passphrase,
+        authorizationNow: authorizationClockFromResponseDate(first.headers)
       })
     );
     const paid = await requestJson<unknown>(apiUrl, path, {

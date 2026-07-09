@@ -33,13 +33,15 @@ export async function createPaymentSignatureHeader(input: {
   walletAddress: string;
   walletName: string;
   passphrase?: string;
+  authorizationNow?: number;
 }) {
   const accepted = selectBaseUsdcRequirement(input.paymentRequired);
   const authorization = buildTransferAuthorization({
     from: input.walletAddress as `0x${string}`,
     to: accepted.payTo as `0x${string}`,
     amount: accepted.amount,
-    maxTimeoutSeconds: accepted.maxTimeoutSeconds
+    maxTimeoutSeconds: accepted.maxTimeoutSeconds,
+    now: input.authorizationNow
   });
 
   const typedData = {
