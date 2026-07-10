@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -116,7 +116,11 @@ describe("loadConfig / saveConfig", () => {
 
     await expect(loadConfig()).resolves.toMatchObject({ sessions: { [PROD_URL]: "recovered" } });
     await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await readdir(path.dirname(lockDir))).filter((entry) => entry.startsWith(".config.lock.reclaim-"))).toEqual([]);
+    const guardStat = await stat(path.join(path.dirname(lockDir), ".config.lock.guard"));
+    expect(guardStat.isFile()).toBe(true);
+    if (process.platform !== "win32") {
+      expect(guardStat.mode & 0o777).toBe(0o600);
+    }
   }, 10_000);
 
   it("serializes simultaneous writers while reclaiming the same dead-owner lock", async () => {
@@ -135,7 +139,7 @@ describe("loadConfig / saveConfig", () => {
     const saved = await loadConfig();
     expect(Object.keys(saved.sessions)).toHaveLength(8);
     await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await readdir(path.dirname(lockDir))).filter((entry) => entry.startsWith(".config.lock.reclaim-"))).toEqual([]);
+    await expect(stat(path.join(path.dirname(lockDir), ".config.lock.guard"))).resolves.toBeDefined();
   });
 
   // The exact #72 failure on every supported platform: a real lock holder is
@@ -184,6 +188,63 @@ describe("loadConfig / saveConfig", () => {
     await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
   }, 20_000);
 
+  it.skipIf(process.platform === "win32")("recovers after a reclamation-guard holder is hard-killed", async () => {
+    const dir = path.join(home, ".h402");
+    const lockDir = path.join(dir, ".config.lock");
+    const guardPath = path.join(dir, ".config.lock.guard");
+    await mkdir(lockDir, { recursive: true });
+    await writeFile(path.join(lockDir, "owner.json"), JSON.stringify(await deadOwner("dead-before-guard-crash")));
+
+    const code = `
+      import { open } from "node:fs/promises";
+      import { tryLock } from "fs-native-extensions";
+      const handle = await open(${JSON.stringify(guardPath)}, "a+");
+      if (!tryLock(handle.fd)) throw new Error("failed to acquire reclamation guard");
+      console.log("GUARD_LOCKED");
+      setInterval(() => {}, 1_000);
+    `;
+    const child = spawn(process.execPath, ["--input-type=module", "-e", code], {
+      cwd: path.resolve(import.meta.dirname, "../../.."),
+      env: { ...process.env, HOME: home },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`guard holder did not start: ${stderr}`)), 10_000);
+        child.stdout.on("data", (chunk) => {
+          if (String(chunk).includes("GUARD_LOCKED")) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+        child.once("error", reject);
+        child.once("exit", (code) => reject(new Error(`guard holder exited early with ${code}: ${stderr}`)));
+      });
+    } catch (error) {
+      child.kill("SIGKILL");
+      throw error;
+    }
+    let saveSettled = false;
+    const recoveredUrl = "https://after-guard-crash.example";
+    const saving = saveConfig({ backendUrl: recoveredUrl, sessions: {}, wallets: {} }).finally(() => {
+      saveSettled = true;
+    });
+    await delay(75);
+    const saveWasBlocked = !saveSettled;
+
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    const killed = child.kill("SIGKILL");
+    await exited;
+    await saving;
+
+    expect(saveWasBlocked).toBe(true);
+    expect(killed).toBe(true);
+    expect((await loadConfig()).backendUrl).toBe(recoveredUrl);
+    await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 20_000);
+
   it("does not reclaim an ownerless legacy lock based on age alone", async () => {
     const lockDir = path.join(home, ".h402", ".config.lock");
     await mkdir(lockDir, { recursive: true });
@@ -220,20 +281,6 @@ describe("loadConfig / saveConfig", () => {
     await expect(stat(lockDir)).resolves.toBeDefined();
   }, 10_000);
 
-  it("sweeps abandoned reclaim claims but keeps fresh ones", async () => {
-    const dir = path.join(home, ".h402");
-    const staleClaim = path.join(dir, ".config.lock.reclaim-stale");
-    const freshClaim = path.join(dir, ".config.lock.reclaim-fresh");
-    await mkdir(staleClaim, { recursive: true });
-    await mkdir(freshClaim, { recursive: true });
-    const past = new Date(Date.now() - 3_600_000);
-    await utimes(staleClaim, past, past);
-
-    await saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
-
-    await expect(stat(staleClaim)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(stat(freshClaim)).resolves.toBeDefined();
-  });
 
   it("waits for a live competing writer and preserves serialized updates", async () => {
     let enteredFirst!: () => void;

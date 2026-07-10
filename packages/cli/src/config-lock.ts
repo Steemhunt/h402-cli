@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rm, stat, writeFile, type FileHandle } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -23,12 +23,85 @@ type ConfigLockObservation = {
 };
 
 const CONFIG_LOCK_OWNER_FILE = "owner.json";
+const CONFIG_LOCK_GUARD_FILE = ".config.lock.guard";
 const CONFIG_LOCK_WAIT_ATTEMPTS = 200;
 const CONFIG_LOCK_WAIT_MS = 25;
-const RECLAIM_CLAIM_PREFIX = ".config.lock.reclaim-";
-// A reclaim claim lives for microseconds; one this old can only be the leftover
-// of a reclaimer that died mid-claim. It is inert (never the lock path itself).
-const STALE_RECLAIM_CLAIM_MS = 600_000;
+
+type NativeLockApi = {
+  tryLock(fd: number): boolean;
+  unlock(fd: number): void;
+};
+
+type ConfigLockRelease = () => Promise<void>;
+
+type NativeLockLoad = {
+  api?: NativeLockApi;
+  reason?: string;
+};
+
+type ReclaimResult = {
+  reclaimed: boolean;
+  blockedReason?: string;
+};
+
+let nativeLockLoadPromise: Promise<NativeLockLoad> | undefined;
+
+function errorDescription(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code ? `${code}: ${message}` : message;
+}
+
+async function loadNativeLockApi(): Promise<NativeLockLoad> {
+  nativeLockLoadPromise ??= import("fs-native-extensions")
+    .then(({ tryLock, unlock }) => ({ api: { tryLock, unlock } }))
+    .catch((error: unknown) => ({ reason: errorDescription(error) }));
+  return nativeLockLoadPromise;
+}
+
+async function tryAcquireReclamationGuard(dir: string): Promise<{ release?: ConfigLockRelease; reason?: string }> {
+  const loaded = await loadNativeLockApi();
+  if (!loaded.api) {
+    return { reason: `config-lock reclamation guard is unavailable (${loaded.reason ?? "native file locking could not be loaded"})` };
+  }
+
+  const guardPath = path.join(dir, CONFIG_LOCK_GUARD_FILE);
+  let handle: FileHandle;
+  try {
+    handle = await open(guardPath, "a+", 0o600);
+    await chmod(guardPath, 0o600).catch(() => undefined);
+  } catch (error) {
+    return { reason: `config-lock reclamation guard could not be opened (${errorDescription(error)})` };
+  }
+
+  let acquired = false;
+  try {
+    try {
+      acquired = loaded.api.tryLock(handle.fd);
+    } catch (error) {
+      return { reason: `config-lock reclamation guard failed (${errorDescription(error)})` };
+    }
+    if (!acquired) return {};
+
+    let released = false;
+    return {
+      release: async () => {
+        if (released) return;
+        released = true;
+        try {
+          loaded.api?.unlock(handle.fd);
+        } catch {
+          // Closing the descriptor releases the kernel lock even if explicit
+          // unlock is unsupported or fails at runtime.
+        } finally {
+          await handle.close().catch(() => undefined);
+        }
+      }
+    };
+  } finally {
+    if (!acquired) await handle.close().catch(() => undefined);
+  }
+}
 
 function isConfigLockOwner(value: unknown): value is ConfigLockOwner {
   if (!isPlainObject(value)) return false;
@@ -109,54 +182,27 @@ async function inspectConfigLock(lockDir: string): Promise<ConfigLockObservation
   }
 }
 
-// Reclaim by atomic claim: exactly one contender wins the rename (losers get
-// ENOENT), so two reclaimers can never both delete, and a lock released and
-// recreated between inspect and rename is detected by the token re-check and
-// put back instead of deleted.
-async function reclaimConfigLockIfUnchanged(lockDir: string, observed: ConfigLockObservation): Promise<boolean> {
-  if (!observed.reclaimable || !observed.token) return false;
-  const claimDir = path.join(path.dirname(lockDir), `${RECLAIM_CLAIM_PREFIX}${randomUUID()}`);
-  try {
-    await rename(lockDir, claimDir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
-  const claimedOwner = await readConfigLockOwner(claimDir).catch(() => undefined);
-  if (claimedOwner?.token === observed.token) {
-    await rm(claimDir, { recursive: true, force: true });
-    return true;
-  }
-  try {
-    await rename(claimDir, lockDir);
-  } catch {
-    // The lock path was recreated in the gap; the displaced dir belongs to an
-    // owner we could not verify, so leave it for the stale-claim sweep rather
-    // than deleting it. That owner's release fails loudly on the token check.
-  }
-  return false;
-}
+// Reclamation is serialized by a crash-released kernel advisory lock. A stale
+// observer must re-read the canonical owner while holding the guard; it never
+// moves an unverified successor out of the coordination path.
+async function reclaimConfigLockIfUnchanged(lockDir: string, observed: ConfigLockObservation): Promise<ReclaimResult> {
+  if (!observed.reclaimable || !observed.token) return { reclaimed: false };
 
-// Crashed-reclaimer hygiene: claim dirs are inert garbage once abandoned —
-// they are never the lock path — so age-based cleanup is safe for them.
-async function sweepStaleReclaimClaims(dir: string) {
-  let entries: string[];
+  const guard = await tryAcquireReclamationGuard(path.dirname(lockDir));
+  if (!guard.release) return { reclaimed: false, blockedReason: guard.reason };
+
   try {
-    entries = await readdir(dir);
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    if (!entry.startsWith(RECLAIM_CLAIM_PREFIX)) continue;
-    const claimPath = path.join(dir, entry);
+    const current = await inspectConfigLock(lockDir);
+    if (!current.reclaimable || current.token !== observed.token) return { reclaimed: false };
     try {
-      const claimStat = await stat(claimPath);
-      if (Date.now() - claimStat.mtimeMs > STALE_RECLAIM_CLAIM_MS) {
-        await rm(claimPath, { recursive: true, force: true });
-      }
-    } catch {
-      // Already gone or unreadable — nothing to clean.
+      await rm(lockDir, { recursive: true });
+      return { reclaimed: true };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { reclaimed: false };
+      throw error;
     }
+  } finally {
+    await guard.release();
   }
 }
 
@@ -170,7 +216,6 @@ function lockTimeoutError(lockDir: string, observation: ConfigLockObservation): 
 export async function acquireConfigLock(dir: string) {
   const lockDir = path.join(dir, ".config.lock");
   const token = randomUUID();
-  await sweepStaleReclaimClaims(dir);
   let lastObservation: ConfigLockObservation = { reclaimable: false, reason: "lock is contended" };
 
   let waitedAttempts = 0;
@@ -205,9 +250,17 @@ export async function acquireConfigLock(dir: string) {
         throw error;
       }
       lastObservation = await inspectConfigLock(lockDir);
-      if (await reclaimConfigLockIfUnchanged(lockDir, lastObservation)) {
+      const reclamation = await reclaimConfigLockIfUnchanged(lockDir, lastObservation);
+      if (reclamation.reclaimed) {
         // Reclamation is not a wait attempt; retry mkdir even at the deadline.
         continue;
+      }
+      if (reclamation.blockedReason) {
+        lastObservation = {
+          ...lastObservation,
+          reclaimable: false,
+          reason: `${lastObservation.reason}; ${reclamation.blockedReason}`
+        };
       }
       waitedAttempts += 1;
       if (waitedAttempts < CONFIG_LOCK_WAIT_ATTEMPTS) {
