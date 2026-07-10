@@ -238,6 +238,65 @@ describe("callCommand pending settlement reconciliation", () => {
     expect(signOwsTypedData).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the do-not-repay guidance when a post-pending retry fails at the network layer", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(res(402, challenge()))
+      .mockResolvedValueOnce(res(409, pending()))
+      .mockRejectedValueOnce(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    const execution = callCommand(args()).catch((error: unknown) => error);
+    await vi.runAllTimersAsync();
+    const error = await execution;
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("ECONNRESET");
+    expect((error as Error).message).toMatch(/do NOT sign or pay with a new idempotency key/i);
+    expect((error as Error).message).toContain(IDEMPOTENCY_KEY);
+    expect(signOwsTypedData).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the do-not-repay guidance when a post-pending retry returns a generic 5xx", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(res(402, challenge()))
+      .mockResolvedValueOnce(res(409, pending()))
+      .mockResolvedValueOnce(res(500, { error: { message: "upstream exploded" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    const execution = callCommand(args()).catch((error: unknown) => error);
+    await vi.runAllTimersAsync();
+    const error = await execution;
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("upstream exploded");
+    expect((error as Error).message).toMatch(/do NOT sign or pay with a new idempotency key/i);
+    expect((error as Error).message).toContain(IDEMPOTENCY_KEY);
+    expect(signOwsTypedData).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("refuses a replacement challenge that does not identify the pending idempotency key", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(res(402, challenge("1000")))
+      .mockResolvedValueOnce(res(409, pending()))
+      .mockResolvedValueOnce(res(402, challenge("2000"), { "x-h402-replacement-idempotency-key": REPLACEMENT_KEY }));
+    vi.stubGlobal("fetch", fetch);
+
+    const execution = callCommand(args()).catch((thrown: unknown) => thrown);
+    await vi.runAllTimersAsync();
+    const error = await execution;
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/did not identify the pending idempotency key/i);
+    expect((error as Error).message).toMatch(/do NOT sign or pay with a new idempotency key/i);
+    expect(signOwsTypedData).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   it("refuses a replacement challenge without a preceding pending-settlement response", async () => {
     const fetch = vi
       .fn()

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { assertOk, backendErrorCode, requestJson, type ApiResponse } from "./api.js";
+import { assertOk, backendErrorCode, IDEMPOTENCY_MONEY_GUIDANCE, requestJson, type ApiResponse } from "./api.js";
 import { BASE_USDC_BALANCE_ASSET, BASE_USDC_BALANCE_NETWORK, getBaseUsdcBalance } from "./base-usdc-balance.js";
 import { backendUrl, loadConfig, updateConfig, type CliConfig } from "./config.js";
 import { CliError } from "./errors.js";
@@ -428,19 +428,37 @@ function waitForPaymentSettlement(delayMs: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 }
 
+// Once a pending-settlement response was observed, any later failure — a network
+// drop, a gateway 5xx — leaves the charge state unknown, so the do-not-repay
+// guidance must survive even when the final error body carries no settlement code.
+function withSettlementRiskGuidance(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes(IDEMPOTENCY_MONEY_GUIDANCE)) {
+    return error;
+  }
+  return new CliError(`${message}. ${IDEMPOTENCY_MONEY_GUIDANCE}`, error instanceof CliError ? error.detail : undefined);
+}
+
 function replacementPaymentFromResponse(response: ApiResponse<unknown>, currentIdempotencyKey: string) {
   if (response.status !== 402) return undefined;
   const replacementIdempotencyKey = response.headers.get(REPLACEMENT_IDEMPOTENCY_KEY_HEADER);
   if (!replacementIdempotencyKey) return undefined;
 
+  // The server contract emits both headers; without the previous-key binding the
+  // challenge cannot be correlated to the pending authorization, so never sign it.
   const previousIdempotencyKey = response.headers.get(PREVIOUS_IDEMPOTENCY_KEY_HEADER);
-  if (previousIdempotencyKey && previousIdempotencyKey !== currentIdempotencyKey) {
-    throw new CliError("Replacement payment response refers to a different previous idempotency key; refusing to sign.", {
-      previousIdempotencyKey,
-      currentIdempotencyKey,
-      replacementIdempotencyKey,
-      url: response.url
-    });
+  if (previousIdempotencyKey !== currentIdempotencyKey) {
+    throw new CliError(
+      previousIdempotencyKey
+        ? "Replacement payment response refers to a different previous idempotency key; refusing to sign."
+        : "Replacement payment response did not identify the pending idempotency key it replaces; refusing to sign.",
+      {
+        previousIdempotencyKey,
+        currentIdempotencyKey,
+        replacementIdempotencyKey,
+        url: response.url
+      }
+    );
   }
   if (replacementIdempotencyKey === currentIdempotencyKey) {
     throw new CliError("Replacement payment response reused the pending idempotency key; refusing to create a fresh authorization for it.", {
@@ -484,6 +502,7 @@ export async function callCommand(args: ParsedArgs) {
   }
 
   let activeIdempotencyKey = idempotencyKey;
+  let settlementMayHaveOccurred = false;
   try {
     const first = await requestJson<unknown>(apiUrl, path, {
       method,
@@ -537,6 +556,7 @@ export async function callCommand(args: ParsedArgs) {
       for (const delayMs of PAYMENT_SETTLEMENT_RETRY_DELAYS_MS) {
         if (!isPaymentSettlementPending(paid)) break;
         sawPendingSettlement = true;
+        settlementMayHaveOccurred = true;
         await waitForPaymentSettlement(delayMs);
         paid = await sendSignedRequest();
       }
@@ -566,6 +586,6 @@ export async function callCommand(args: ParsedArgs) {
       signedPayment = await signPayment(replacementPayment.paymentRequired, paid.headers, replacementPayment.idempotencyKey);
     }
   } catch (error) {
-    throw withIdempotencyKey(error, activeIdempotencyKey);
+    throw withIdempotencyKey(settlementMayHaveOccurred ? withSettlementRiskGuidance(error) : error, activeIdempotencyKey);
   }
 }
