@@ -51,8 +51,15 @@ describe("doc examples stay runnable against the catalog contract", () => {
       expect(text).toContain("Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.");
       expect(text).toContain("h402 call <followUp.routeId>");
       expect(text).toContain("--provider <provider-from-followUp.path>");
-      expect(text).toContain("--query '<followUp.params>'");
       expect(text).not.toMatch(/provider-specific fields[^\n]+require pinning/i);
+
+      // The template must stay method-aware: GET polls use --query, POST polls
+      // use --json — the CLI rejects --query combined with POST.
+      expect(text).toContain("Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST");
+      expect(text).toContain("# followUp.method GET (most status polls):");
+      expect(text).toContain("--query '<followUp.params>'");
+      expect(text).toContain("# followUp.method POST (e.g. ai/music-status-async):");
+      expect(text).toContain("--json '<followUp.params>'");
     }
   });
 

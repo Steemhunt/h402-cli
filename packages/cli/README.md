@@ -98,12 +98,18 @@ Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `cred
 
 A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, optional `paymentTransaction`, optional `followUp`, and optional `signedAmount` for paid x402 calls. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
 
-Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes. The follow-up path is provider-bound, so preserve the provider segment from that path when translating the instruction to CLI form (`<followUp.params>` means its JSON-encoded object):
+Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes. The follow-up path is provider-bound, so preserve the provider segment from that path when translating the instruction to CLI form. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
 
 ```bash
+# followUp.method GET (most status polls):
 h402 call <followUp.routeId> \
   --provider <provider-from-followUp.path> \
   --query '<followUp.params>'
+
+# followUp.method POST (e.g. ai/music-status-async):
+h402 call <followUp.routeId> \
+  --provider <provider-from-followUp.path> \
+  --json '<followUp.params>'
 ```
 
 Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it. `web/search` accepts common fields such as `query` and `limit` on the default `auto` route, and capable candidates can also accept native fields such as `freshness` without a pin. Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.
