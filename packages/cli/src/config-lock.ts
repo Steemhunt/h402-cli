@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, open, readFile, readlink, rm, stat, writeFile, type FileHandle } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -8,113 +8,33 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-type LinuxProcessIdentity = {
-  machineIdHash: string;
-  bootId: string;
-  pidNamespace: string;
-  startTicks: string;
-};
-
 type ConfigLockOwner = {
-  version: 2;
+  version: 3;
   pid: number;
   hostname: string;
   createdAt: string;
   token: string;
-  linuxProcess?: LinuxProcessIdentity;
 };
 
 type ConfigLockObservation = {
-  identity?: string;
-  reclaimable: boolean;
-  reason: string;
-};
-
-type LockOwnerState = {
+  token?: string;
   reclaimable: boolean;
   reason: string;
 };
 
 const CONFIG_LOCK_OWNER_FILE = "owner.json";
-const CONFIG_LOCK_GUARD_FILE = ".config.lock.guard";
 const CONFIG_LOCK_WAIT_ATTEMPTS = 200;
 const CONFIG_LOCK_WAIT_MS = 25;
-
-type NativeLockApi = {
-  tryLock(fd: number): boolean;
-  unlock(fd: number): void;
-};
-
-type ConfigLockRelease = () => Promise<void>;
-
-let nativeLockApiPromise: Promise<NativeLockApi | undefined> | undefined;
-
-async function loadNativeLockApi(): Promise<NativeLockApi | undefined> {
-  nativeLockApiPromise ??= import("fs-native-extensions")
-    .then(({ tryLock, unlock }) => ({ tryLock, unlock }))
-    .catch(() => undefined);
-  return nativeLockApiPromise;
-}
-
-async function acquireOperationGuardWithApi(
-  dir: string,
-  api: NativeLockApi,
-  attempts: number
-): Promise<ConfigLockRelease | undefined> {
-  const guardPath = path.join(dir, CONFIG_LOCK_GUARD_FILE);
-  const handle: FileHandle = await open(guardPath, "a+", 0o600);
-  await chmod(guardPath, 0o600).catch(() => undefined);
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (api.tryLock(handle.fd)) {
-      let released = false;
-      return async () => {
-        if (released) return;
-        released = true;
-        try {
-          api.unlock(handle.fd);
-        } finally {
-          await handle.close();
-        }
-      };
-    }
-    if (attempt + 1 < attempts) await delay(CONFIG_LOCK_WAIT_MS);
-  }
-  await handle.close();
-  return undefined;
-}
-
-export async function acquireConfigLockOperationGuard(dir: string): Promise<ConfigLockRelease> {
-  const api = await loadNativeLockApi();
-  if (!api) {
-    throw new Error("Native file locking is unavailable; h402 cannot safely coordinate config-lock reclamation on this platform.");
-  }
-  const release = await acquireOperationGuardWithApi(dir, api, CONFIG_LOCK_WAIT_ATTEMPTS);
-  if (!release) {
-    throw new Error(`Timed out waiting for h402 config-lock operation guard at ${path.join(dir, CONFIG_LOCK_GUARD_FILE)}.`);
-  }
-  return release;
-}
-
-function isLinuxProcessIdentity(value: unknown): value is LinuxProcessIdentity {
-  if (!isPlainObject(value)) return false;
-  const identity = value as Record<string, unknown>;
-  return (
-    typeof identity.machineIdHash === "string" &&
-    identity.machineIdHash.length > 0 &&
-    typeof identity.bootId === "string" &&
-    identity.bootId.length > 0 &&
-    typeof identity.pidNamespace === "string" &&
-    identity.pidNamespace.length > 0 &&
-    typeof identity.startTicks === "string" &&
-    identity.startTicks.length > 0
-  );
-}
+const RECLAIM_CLAIM_PREFIX = ".config.lock.reclaim-";
+// A reclaim claim lives for microseconds; one this old can only be the leftover
+// of a reclaimer that died mid-claim. It is inert (never the lock path itself).
+const STALE_RECLAIM_CLAIM_MS = 600_000;
 
 function isConfigLockOwner(value: unknown): value is ConfigLockOwner {
   if (!isPlainObject(value)) return false;
   const owner = value as Record<string, unknown>;
   return (
-    owner.version === 2 &&
+    owner.version === 3 &&
     Number.isSafeInteger(owner.pid) &&
     (owner.pid as number) > 0 &&
     typeof owner.hostname === "string" &&
@@ -122,8 +42,7 @@ function isConfigLockOwner(value: unknown): value is ConfigLockOwner {
     typeof owner.createdAt === "string" &&
     Number.isFinite(Date.parse(owner.createdAt)) &&
     typeof owner.token === "string" &&
-    owner.token.length > 0 &&
-    (owner.linuxProcess === undefined || isLinuxProcessIdentity(owner.linuxProcess))
+    owner.token.length > 0
   );
 }
 
@@ -144,114 +63,100 @@ async function readConfigLockOwner(lockDir: string): Promise<ConfigLockOwner | u
   }
 }
 
-async function readLinuxHostIdentity(): Promise<Omit<LinuxProcessIdentity, "startTicks"> | undefined> {
-  if (process.platform !== "linux") return undefined;
+// Signal-0 liveness: ESRCH proves no process with that PID exists now, so a
+// same-host owner reporting ESRCH is definitively dead. A PID that was reused
+// by another process reads as alive — that only degrades to the conservative
+// manual-recovery path, never to deleting a live owner's lock. (A sibling
+// container sharing this config dir AND this hostname across PID namespaces is
+// outside this envelope; hostname is the machine boundary here.)
+function ownerProcessAlive(pid: number): boolean | undefined {
   try {
-    const [rawMachineId, bootId, pidNamespace] = await Promise.all([
-      readFile("/etc/machine-id", "utf8"),
-      readFile("/proc/sys/kernel/random/boot_id", "utf8"),
-      readlink("/proc/self/ns/pid")
-    ]);
-    if (!rawMachineId.trim() || !bootId.trim() || !pidNamespace.trim()) return undefined;
-    const machineIdHash = createHash("sha256").update("h402-config-lock\0").update(rawMachineId.trim()).digest("hex");
-    return { machineIdHash, bootId: bootId.trim(), pidNamespace: pidNamespace.trim() };
-  } catch {
-    return undefined;
-  }
-}
-
-async function readLinuxProcessStartTicks(pid: number): Promise<string> {
-  const raw = await readFile(`/proc/${pid}/stat`, "utf8");
-  const commandEnd = raw.lastIndexOf(")");
-  if (commandEnd < 0) throw new Error(`Could not parse /proc/${pid}/stat`);
-  const fieldsAfterCommand = raw.slice(commandEnd + 1).trim().split(/\s+/);
-  const startTicks = fieldsAfterCommand[19];
-  if (!startTicks) throw new Error(`Could not read process start time for PID ${pid}`);
-  return startTicks;
-}
-
-async function currentLinuxProcessIdentity(): Promise<LinuxProcessIdentity | undefined> {
-  const host = await readLinuxHostIdentity();
-  if (!host) return undefined;
-  try {
-    return { ...host, startTicks: await readLinuxProcessStartTicks(process.pid) };
-  } catch {
-    return undefined;
-  }
-}
-
-async function inspectLockOwner(owner: ConfigLockOwner): Promise<LockOwnerState> {
-  const recorded = owner.linuxProcess;
-  const current = await readLinuxHostIdentity();
-  if (!recorded || !current) {
-    return { reclaimable: false, reason: `owner PID ${owner.pid} on ${owner.hostname} has no process identity that can be verified on this platform` };
-  }
-  if (recorded.machineIdHash !== current.machineIdHash) {
-    return { reclaimable: false, reason: `owner PID ${owner.pid} belongs to a different machine instance` };
-  }
-  if (recorded.bootId !== current.bootId) {
-    return { reclaimable: true, reason: `owner PID ${owner.pid} belongs to an earlier boot of this machine` };
-  }
-  if (recorded.pidNamespace !== current.pidNamespace) {
-    return { reclaimable: false, reason: `owner PID ${owner.pid} belongs to a different PID namespace` };
-  }
-  try {
-    const startTicks = await readLinuxProcessStartTicks(owner.pid);
-    if (startTicks !== recorded.startTicks) {
-      return { reclaimable: true, reason: `owner PID ${owner.pid} was reused by another process` };
-    }
-    return { reclaimable: false, reason: `live PID ${owner.pid} on ${owner.hostname} since ${owner.createdAt}` };
+    process.kill(pid, 0);
+    return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { reclaimable: true, reason: `owner PID ${owner.pid} no longer exists in its recorded process namespace` };
-    }
-    return { reclaimable: false, reason: `owner PID ${owner.pid} could not be verified: ${(error as Error).message}` };
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
+    return undefined;
   }
 }
 
 async function inspectConfigLock(lockDir: string): Promise<ConfigLockObservation> {
   try {
     const owner = await readConfigLockOwner(lockDir);
-    if (owner) {
-      const state = await inspectLockOwner(owner);
-      return { identity: `owner:${owner.token}`, ...state };
+    if (!owner) {
+      const lockStat = await stat(lockDir);
+      const ageMs = Math.max(0, Date.now() - lockStat.mtimeMs);
+      return {
+        reclaimable: false,
+        reason: `lock has no valid owner metadata; automatic reclamation is unsafe (${Math.round(ageMs)}ms old)`
+      };
     }
-
-    const lockStat = await stat(lockDir);
-    const ageMs = Math.max(0, Date.now() - lockStat.mtimeMs);
-    return {
-      identity: `unverifiable:${lockStat.dev}:${lockStat.ino}:${lockStat.mtimeMs}`,
-      reclaimable: false,
-      reason: `lock has no valid owner metadata; automatic reclamation is unsafe (${Math.round(ageMs)}ms old)`
-    };
+    if (owner.hostname !== os.hostname()) {
+      return { token: owner.token, reclaimable: false, reason: `owner PID ${owner.pid} on ${owner.hostname} cannot be verified from this host` };
+    }
+    const alive = ownerProcessAlive(owner.pid);
+    if (alive === false) {
+      return { token: owner.token, reclaimable: true, reason: `owner PID ${owner.pid} no longer exists` };
+    }
+    if (alive === true) {
+      return { token: owner.token, reclaimable: false, reason: `live PID ${owner.pid} on ${owner.hostname} since ${owner.createdAt}` };
+    }
+    return { token: owner.token, reclaimable: false, reason: `owner PID ${owner.pid} could not be verified` };
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return { reclaimable: false, reason: "lock disappeared while being inspected" };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { reclaimable: false, reason: "lock disappeared while being inspected" };
     return { reclaimable: false, reason: `lock ownership could not be inspected: ${(error as Error).message}` };
   }
 }
 
+// Reclaim by atomic claim: exactly one contender wins the rename (losers get
+// ENOENT), so two reclaimers can never both delete, and a lock released and
+// recreated between inspect and rename is detected by the token re-check and
+// put back instead of deleted.
 async function reclaimConfigLockIfUnchanged(lockDir: string, observed: ConfigLockObservation): Promise<boolean> {
-  if (!observed.reclaimable || !observed.identity) return false;
-  const api = await loadNativeLockApi();
-  // Without a kernel-backed guard, automatic deletion is unsafe. Preserve the
-  // lock and let the normal timeout provide manual recovery guidance instead.
-  if (!api) return false;
-  const releaseGuard = await acquireOperationGuardWithApi(path.dirname(lockDir), api, 1);
-  if (!releaseGuard) return false;
-
+  if (!observed.reclaimable || !observed.token) return false;
+  const claimDir = path.join(path.dirname(lockDir), `${RECLAIM_CLAIM_PREFIX}${randomUUID()}`);
   try {
-    const current = await inspectConfigLock(lockDir);
-    if (!current.reclaimable || current.identity !== observed.identity) return false;
+    await rename(lockDir, claimDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  const claimedOwner = await readConfigLockOwner(claimDir).catch(() => undefined);
+  if (claimedOwner?.token === observed.token) {
+    await rm(claimDir, { recursive: true, force: true });
+    return true;
+  }
+  try {
+    await rename(claimDir, lockDir);
+  } catch {
+    // The lock path was recreated in the gap; the displaced dir belongs to an
+    // owner we could not verify, so leave it for the stale-claim sweep rather
+    // than deleting it. That owner's release fails loudly on the token check.
+  }
+  return false;
+}
+
+// Crashed-reclaimer hygiene: claim dirs are inert garbage once abandoned —
+// they are never the lock path — so age-based cleanup is safe for them.
+async function sweepStaleReclaimClaims(dir: string) {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.startsWith(RECLAIM_CLAIM_PREFIX)) continue;
+    const claimPath = path.join(dir, entry);
     try {
-      await rm(lockDir, { recursive: true });
-      return true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-      throw error;
+      const claimStat = await stat(claimPath);
+      if (Date.now() - claimStat.mtimeMs > STALE_RECLAIM_CLAIM_MS) {
+        await rm(claimPath, { recursive: true, force: true });
+      }
+    } catch {
+      // Already gone or unreadable — nothing to clean.
     }
-  } finally {
-    await releaseGuard();
   }
 }
 
@@ -265,9 +170,7 @@ function lockTimeoutError(lockDir: string, observation: ConfigLockObservation): 
 export async function acquireConfigLock(dir: string) {
   const lockDir = path.join(dir, ".config.lock");
   const token = randomUUID();
-  // Resolve any platform-specific process identity before publishing the lock
-  // directory, keeping the ownerless initialization window to one local write.
-  const linuxProcess = await currentLinuxProcessIdentity();
+  await sweepStaleReclaimClaims(dir);
   let lastObservation: ConfigLockObservation = { reclaimable: false, reason: "lock is contended" };
 
   let waitedAttempts = 0;
@@ -275,12 +178,11 @@ export async function acquireConfigLock(dir: string) {
     try {
       await mkdir(lockDir, { mode: 0o700 });
       const owner: ConfigLockOwner = {
-        version: 2,
+        version: 3,
         pid: process.pid,
         hostname: os.hostname(),
         createdAt: new Date().toISOString(),
-        token,
-        ...(linuxProcess ? { linuxProcess } : {})
+        token
       };
       try {
         await writeFile(path.join(lockDir, CONFIG_LOCK_OWNER_FILE), JSON.stringify(owner), { mode: 0o600, flag: "wx" });
@@ -289,25 +191,14 @@ export async function acquireConfigLock(dir: string) {
         throw error;
       }
       return async () => {
-        const api = await loadNativeLockApi();
-        const releaseGuard = api
-          ? await acquireOperationGuardWithApi(dir, api, CONFIG_LOCK_WAIT_ATTEMPTS)
-          : undefined;
-        if (api && !releaseGuard) {
-          throw new Error(`Refusing to release h402 config lock at ${lockDir}: ownership validation is already in progress.`);
+        const currentOwner = await readConfigLockOwner(lockDir);
+        if (!currentOwner) {
+          throw new Error(`Refusing to release h402 config lock at ${lockDir}: owner metadata is missing or invalid.`);
         }
-        try {
-          const currentOwner = await readConfigLockOwner(lockDir);
-          if (!currentOwner) {
-            throw new Error(`Refusing to release h402 config lock at ${lockDir}: owner metadata is missing or invalid.`);
-          }
-          if (currentOwner.token !== owner.token) {
-            throw new Error(`Refusing to release h402 config lock at ${lockDir}: ownership changed to PID ${currentOwner.pid} on ${currentOwner.hostname}.`);
-          }
-          await rm(lockDir, { recursive: true, force: true });
-        } finally {
-          await releaseGuard?.();
+        if (currentOwner.token !== token) {
+          throw new Error(`Refusing to release h402 config lock at ${lockDir}: ownership changed to PID ${currentOwner.pid} on ${currentOwner.hostname}.`);
         }
+        await rm(lockDir, { recursive: true, force: true });
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
