@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/%40h402%2Fcli?label=%40h402%2Fcli)](https://www.npmjs.com/package/@h402/cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 
-Local, non-custodial CLI for [h402](../../README.md) — the x402 router for agent capabilities. Browse the catalog, quote a task, and pay-per-call from a local wallet in Base USDC over x402. **Private keys never leave your machine.**
+Local, non-custodial CLI for [h402](../../README.md) — the x402 router for agent capabilities. Browse and quote without a wallet, call free routes directly, and pay from a local wallet only when challenged over x402. **Private keys never leave your machine.**
 
 Building an AI agent? See [`SKILL.md`](../../SKILL.md) for an agent-ready walkthrough.
 
@@ -15,17 +15,22 @@ npm install -g @h402/cli
 
 > The [Open Wallet Standard](https://github.com/open-wallet-standard) core library ships with the CLI, so a global install is self-contained on supported platforms.
 >
-> OWS native bindings currently target macOS/Linux glibc on x64/arm64. Non-wallet commands (`--help`, `search`, `quote`) lazy-load OWS and still work without native bindings; wallet creation and payment signing require those JS native bindings.
+> OWS native bindings currently target macOS/Linux glibc on x64/arm64. Wallet-free operations (`--help`, `search`, `quote`, and free-route `call`) do not load OWS and still work without native bindings; wallet management, `auth` signing, and payable-call signing require those JS native bindings.
 
 ## Quickstart
 
 ```bash
-h402 wallet create --name agent                      # local wallet (passphrase-less by default)
-h402 wallet fund --name agent                        # prints the Base USDC address + instructions
-h402 wallet list                                     # inspect local OWS wallets
-h402 wallet restore                                  # re-adopt existing OWS wallets into config
+h402 search "AI news"                                # wallet-free catalog browsing
+h402 quote web/search --json '{"query":"agent APIs"}' # wallet-free quote
+h402 call ai/news                                     # free route; no wallet required
+
+# Only for routes that answer with a payable 402:
+h402 wallet create --name agent                      # local signing wallet
+h402 wallet fund --name agent                        # Base USDC address + instructions
 h402 call web/search --name agent --json '{"query":"agent APIs"}'
 ```
+
+Browsing, quoting, and free-route calls do not require a local wallet. Wallet creation creates a local signing wallet only; `h402 auth` creates the optional bonus-credit session. A funded local wallet is required only if the first response is a payable `402`.
 
 Calls hit the production backend (`https://h402.hunt.town`) by default — override with `--api-url` or `H402_API_URL` (e.g. `http://localhost:3000` for local dev).
 
@@ -33,17 +38,17 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 
 | Command | Description |
 | --- | --- |
-| `h402 wallet create --name <n>` | Create a local OWS wallet (prints its address) |
+| `h402 wallet create --name <n>` | Create a local OWS signing wallet (does not create an auth session; prints its address) |
 | `h402 wallet list` | List OWS wallets |
 | `h402 wallet restore` | Re-adopt OWS wallets into `~/.h402/config.json` |
 | `h402 wallet address --name <n>` | Print the wallet address |
 | `h402 wallet balance --name <n>` | Show the wallet's structured Base USDC balance |
 | `h402 wallet fund --name <n>` | Print the Base USDC deposit address and funding instructions |
-| `h402 auth --name <n>` | Sign in to a backend with a wallet signature (enables bonus credits) |
+| `h402 auth --name <n>` | Create an optional backend bonus-credit session with a wallet signature |
 | `h402 credits` | Show the bonus-credit balance for the signed-in session |
 | `h402 search <query>` | Search the catalog (JSON results) |
 | `h402 quote <category/action>` | Preview the x402 `PAYMENT-REQUIRED` envelope without paying |
-| `h402 call <category/action>` | Execute a paid proxy call (signs + retries on 402) |
+| `h402 call <category/action>` | Execute a route and pay if challenged; free routes need no wallet |
 
 Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help` for usage and flags, and `h402 --version` for the version. Unknown flags and unknown commands fail with a non-zero exit.
 
@@ -67,20 +72,21 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 
 Route ids are `category/action`, e.g. `web/search`, `maps/place-details`, `finance/stock-quote`. `--query` takes one scalar value per key (string, number, or boolean); pass arrays, nested objects, or request bodies with `--json` instead.
 
-## How a paid call works
+## How a call works
 
 ```
 h402 call web/search --json '{"query":"..."}'
    │
-   ├─ POST /routes/auto/web/search           → 402 PAYMENT-REQUIRED (x402 challenge)
-   ├─ sign Base USDC EIP-3009 transferWithAuthorization locally (via OWS)
-   └─ retry with PAYMENT-SIGNATURE + same idempotency-key → 200 + JSON result
+   ├─ initial request (before wallet resolution)
+   ├─ 2xx → return the free JSON result directly
+   └─ payable 402 → resolve wallet, sign Base USDC locally, then retry the same request
 ```
 
-You're charged the exact per-call price (most routes are $0.001–$0.05). Run `h402 quote`
-first to see the price without paying. Pass `--max-usd <amount>` on `call` (or store a
-string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse signing a
-challenge above that USDC cap. Paid call output includes `h402.signedAmount` so agents
+If a route returns a payable 402, you're charged the exact per-call price (most paid
+routes are $0.001–$0.05). A direct free-route 2xx has no charge. Run `h402 quote`
+first to see a payable route's price without paying. Pass `--max-usd <amount>` on
+`call` (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`)
+to refuse signing a challenge above that USDC cap. Paid call output includes `h402.signedAmount` so agents
 can record the amount they signed. The CLI uses the first 402 response's `Date` header
 when building the EIP-3009 validity window, reducing client clock-skew failures on paid
 calls. If you've run `h402 auth`, bonus credits are drawn before USDC unless you pass
@@ -96,7 +102,7 @@ call again.
 
 Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
 
-A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), `paidBy` (`x402-exact`/`credit`/`free`), `ledgerEntryId`, optional `paymentTransaction`, optional `followUp`, and optional `signedAmount` for paid x402 calls. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
+A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), and `paidBy` (`x402-exact`/`credit`/`free`). `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `followUp` describes async work. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
 
 Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes.
 

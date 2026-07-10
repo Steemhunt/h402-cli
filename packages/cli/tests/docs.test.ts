@@ -44,6 +44,20 @@ describe("doc examples stay runnable against the catalog contract", () => {
     expect(text).not.toContain("| `--api-url <url>` | all |");
   });
 
+  it("documents wallet-free routes and conditional payment fields", () => {
+    for (const file of Object.values(DOC_FILES)) {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain("Browsing, quoting, and free-route calls do not require a local wallet.");
+      expect(text).toContain("A funded local wallet is required only if the first response is a payable `402`.");
+      expect(text).toContain("Wallet creation creates a local signing wallet only; `h402 auth` creates the optional bonus-credit session.");
+      expect(text).toContain("h402 call ai/news");
+      expect(text).toContain("`ledgerEntryId` is present for credit or x402-paid calls");
+      expect(text).toContain("`paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields");
+      expect(text).toContain("free calls omit all three");
+      expect(text).not.toMatch(/(?:the|a) first request returns `?402`?/i);
+    }
+  });
+
   it("core README scopes selectExactRequirement to h402 canonical challenges", () => {
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");
