@@ -87,7 +87,13 @@ describe("requestJson", () => {
     });
   });
 
-  for (const code of ["idempotency_key_already_used", "idempotency_key_in_progress"]) {
+  for (const code of [
+    "idempotency_key_already_used",
+    "idempotency_key_in_progress",
+    "idempotency_key_conflict",
+    "payment_settlement_pending",
+    "payment_settlement_reconciled"
+  ]) {
     it(`adds no-double-charge guidance for ${code}`, () => {
       const result = {
         backendUrl: "https://staging.example",

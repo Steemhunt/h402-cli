@@ -44,6 +44,16 @@ describe("doc examples stay runnable against the catalog contract", () => {
     expect(text).not.toContain("| `--api-url <url>` | all |");
   });
 
+  it("documents pending-settlement recovery as in-process exact-signature reuse", () => {
+    for (const label of ["package README.md", "SKILL.md"]) {
+      const text = readFileSync(DOC_FILES[label], "utf8");
+      expect(text).toMatch(/automatically re(?:sends|uses) the exact\s+`PAYMENT-SIGNATURE`/i);
+      expect(text).toMatch(/does not persist\s+(?:the\s+)?(?:signed\s+(?:request|payment|authorization)|payment\s+signatures)/i);
+      expect(text).toMatch(/process exits/i);
+      expect(text).not.toMatch(/reuse the same key after a lost response/i);
+    }
+  });
+
   it("core README scopes selectExactRequirement to h402 canonical challenges", () => {
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");

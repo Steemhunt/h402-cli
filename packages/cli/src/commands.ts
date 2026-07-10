@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { assertOk, requestJson } from "./api.js";
+import { assertOk, backendErrorCode, requestJson, type ApiResponse } from "./api.js";
 import { BASE_USDC_BALANCE_ASSET, BASE_USDC_BALANCE_NETWORK, getBaseUsdcBalance } from "./base-usdc-balance.js";
 import { backendUrl, loadConfig, updateConfig, type CliConfig } from "./config.js";
 import { CliError } from "./errors.js";
@@ -415,6 +415,51 @@ function authorizationClockFromResponseDate(headers: Headers) {
   return Number.isFinite(millis) ? Math.floor(millis / 1000) : undefined;
 }
 
+const PAYMENT_SETTLEMENT_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
+const MAX_REPLACEMENT_PAYMENTS = 1;
+const REPLACEMENT_IDEMPOTENCY_KEY_HEADER = "x-h402-replacement-idempotency-key";
+const PREVIOUS_IDEMPOTENCY_KEY_HEADER = "x-h402-previous-idempotency-key";
+
+function isPaymentSettlementPending(response: ApiResponse<unknown>) {
+  return response.status === 409 && backendErrorCode(response.body) === "payment_settlement_pending";
+}
+
+function waitForPaymentSettlement(delayMs: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+}
+
+function replacementPaymentFromResponse(response: ApiResponse<unknown>, currentIdempotencyKey: string) {
+  if (response.status !== 402) return undefined;
+  const replacementIdempotencyKey = response.headers.get(REPLACEMENT_IDEMPOTENCY_KEY_HEADER);
+  if (!replacementIdempotencyKey) return undefined;
+
+  const previousIdempotencyKey = response.headers.get(PREVIOUS_IDEMPOTENCY_KEY_HEADER);
+  if (previousIdempotencyKey && previousIdempotencyKey !== currentIdempotencyKey) {
+    throw new CliError("Replacement payment response refers to a different previous idempotency key; refusing to sign.", {
+      previousIdempotencyKey,
+      currentIdempotencyKey,
+      replacementIdempotencyKey,
+      url: response.url
+    });
+  }
+  if (replacementIdempotencyKey === currentIdempotencyKey) {
+    throw new CliError("Replacement payment response reused the pending idempotency key; refusing to create a fresh authorization for it.", {
+      currentIdempotencyKey,
+      url: response.url
+    });
+  }
+
+  const paymentRequired = paymentRequiredFromResponse(response.headers, response.body);
+  if (!paymentRequired) {
+    throw new CliError("Replacement payment response did not contain a valid PAYMENT-REQUIRED challenge; refusing to sign.", {
+      currentIdempotencyKey,
+      replacementIdempotencyKey,
+      url: response.url
+    });
+  }
+  return { idempotencyKey: replacementIdempotencyKey, paymentRequired };
+}
+
 export async function callCommand(args: ParsedArgs) {
   rejectExtraPositionals(args, 2, "call", "Did you forget --json for a request body or --query for URL parameters? Run: h402 call --help");
   const config = await loadConfig();
@@ -429,6 +474,7 @@ export async function callCommand(args: ParsedArgs) {
   const paymentCap = maxUsd(args, config);
   const token = config.sessions[apiUrl];
   const path = buildProxyPath(routeId, query, provider);
+  const requestBody = body === undefined ? undefined : JSON.stringify(body);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
   };
@@ -437,11 +483,12 @@ export async function callCommand(args: ParsedArgs) {
     headers.authorization = `Bearer ${token}`;
   }
 
+  let activeIdempotencyKey = idempotencyKey;
   try {
     const first = await requestJson<unknown>(apiUrl, path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: requestBody
     });
 
     const paymentRequired = first.status === 402 ? paymentRequiredFromResponse(first.headers, first.body) : null;
@@ -453,29 +500,72 @@ export async function callCommand(args: ParsedArgs) {
       return;
     }
 
-    const accepted = selectBaseUsdcRequirement(paymentRequired);
-    assertUnderMaxUsd(accepted.amount, paymentCap);
+    // Enforce the cap before resolving a wallet. Replacement challenges are checked
+    // through the same signing helper before any fresh authorization is created.
+    const initialAccepted = selectBaseUsdcRequirement(paymentRequired);
+    assertUnderMaxUsd(initialAccepted.amount, paymentCap);
     const { name, address: walletAddress } = await resolveSigningWallet(args, config);
-    const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
-      createPaymentSignatureHeader({
-        paymentRequired,
-        walletAddress,
-        walletName: name,
-        passphrase,
-        authorizationNow: authorizationClockFromResponseDate(first.headers)
-      })
-    );
-    const paid = await requestJson<unknown>(apiUrl, path, {
-      method,
-      headers: {
-        "idempotency-key": idempotencyKey,
-        [X402_HEADERS.paymentSignature]: paymentSignature
-      },
-      body: body === undefined ? undefined : JSON.stringify(body)
-    });
+    const signPayment = async (
+      nextPaymentRequired: NonNullable<ReturnType<typeof paymentRequiredFromResponse>>,
+      responseHeaders: Headers,
+      nextIdempotencyKey: string
+    ) => {
+      const accepted = selectBaseUsdcRequirement(nextPaymentRequired);
+      assertUnderMaxUsd(accepted.amount, paymentCap);
+      const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
+        createPaymentSignatureHeader({
+          paymentRequired: nextPaymentRequired,
+          walletAddress,
+          walletName: name,
+          passphrase,
+          authorizationNow: authorizationClockFromResponseDate(responseHeaders)
+        })
+      );
+      return { accepted, idempotencyKey: nextIdempotencyKey, paymentSignature };
+    };
 
-    await printJson(withSignedAmount(assertOk(paid), accepted));
+    let signedPayment = await signPayment(paymentRequired, first.headers, idempotencyKey);
+    let replacementPayments = 0;
+    while (true) {
+      const paidHeaders = {
+        "idempotency-key": signedPayment.idempotencyKey,
+        [X402_HEADERS.paymentSignature]: signedPayment.paymentSignature
+      };
+      const sendSignedRequest = () => requestJson<unknown>(apiUrl, path, { method, headers: paidHeaders, body: requestBody });
+      let paid = await sendSignedRequest();
+      let sawPendingSettlement = false;
+      for (const delayMs of PAYMENT_SETTLEMENT_RETRY_DELAYS_MS) {
+        if (!isPaymentSettlementPending(paid)) break;
+        sawPendingSettlement = true;
+        await waitForPaymentSettlement(delayMs);
+        paid = await sendSignedRequest();
+      }
+
+      const replacementPayment = replacementPaymentFromResponse(paid, signedPayment.idempotencyKey);
+      if (replacementPayment && !sawPendingSettlement) {
+        throw new CliError("Replacement payment challenge arrived without a preceding pending-settlement response; refusing to sign.", {
+          currentIdempotencyKey: signedPayment.idempotencyKey,
+          replacementIdempotencyKey: replacementPayment.idempotencyKey,
+          url: paid.url
+        });
+      }
+      if (!replacementPayment) {
+        await printJson(withSignedAmount(assertOk(paid), signedPayment.accepted));
+        return;
+      }
+      if (replacementPayments >= MAX_REPLACEMENT_PAYMENTS) {
+        throw new CliError("Server returned repeated replacement payment challenges; refusing to continue signing.", {
+          currentIdempotencyKey: signedPayment.idempotencyKey,
+          replacementIdempotencyKey: replacementPayment.idempotencyKey,
+          url: paid.url
+        });
+      }
+
+      replacementPayments += 1;
+      activeIdempotencyKey = replacementPayment.idempotencyKey;
+      signedPayment = await signPayment(replacementPayment.paymentRequired, paid.headers, replacementPayment.idempotencyKey);
+    }
   } catch (error) {
-    throw withIdempotencyKey(error, idempotencyKey);
+    throw withIdempotencyKey(error, activeIdempotencyKey);
   }
 }
