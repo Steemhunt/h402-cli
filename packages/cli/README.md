@@ -78,12 +78,12 @@ Route ids are `category/action`, e.g. `web/search`, `maps/place-details`, `finan
 h402 call web/search --json '{"query":"..."}'
    │
    ├─ initial request (before wallet resolution)
-   ├─ 2xx → return the free JSON result directly
+   ├─ 2xx → returned directly; h402.paidBy says free or credit
    └─ payable 402 → resolve wallet, sign Base USDC locally, then retry the same request
 ```
 
 If a route returns a payable 402, you're charged the exact per-call price (most paid
-routes are $0.001–$0.05). A direct free-route 2xx has no charge. Run `h402 quote`
+routes are $0.001–$0.05). An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Run `h402 quote`
 first to see a payable route's price without paying. Pass `--max-usd <amount>` on
 `call` (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`)
 to refuse signing a challenge above that USDC cap. Paid call output includes `h402.signedAmount` so agents

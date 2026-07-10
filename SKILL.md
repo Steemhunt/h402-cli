@@ -82,8 +82,7 @@ h402 call crypto/token-holders --name agent \
 
 ## How payment works (per call, non-custodial)
 
-The CLI sends the first request before resolving a wallet. A free route returns a direct
-2xx result. Only a payable `402` makes the CLI resolve a wallet, sign a Base USDC EIP-3009
+The CLI sends the first request before resolving a wallet. An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Only a payable `402` makes the CLI resolve a wallet, sign a Base USDC EIP-3009
 `transferWithAuthorization` **locally** (your key never leaves the machine), attach it as
 a `PAYMENT-SIGNATURE` header, and retry the same request. Pass `--max-usd <amount>`
 (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse

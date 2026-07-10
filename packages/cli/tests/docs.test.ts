@@ -55,6 +55,14 @@ describe("doc examples stay runnable against the catalog contract", () => {
       expect(text).toContain("`paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields");
       expect(text).toContain("free calls omit all three");
       expect(text).not.toMatch(/(?:the|a) first request returns `?402`?/i);
+
+      // An initial 2xx is not necessarily free: with an authenticated session,
+      // bonus credits can cover a paid route. Classification lives in h402.paidBy.
+      expect(text).toContain(
+        "An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session."
+      );
+      expect(text).not.toMatch(/free route returns (?:its|a) direct\s+2xx result/i);
+      expect(text).not.toMatch(/2xx → return the free JSON result/);
     }
   });
 
