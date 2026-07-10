@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, readlink, rm, stat, writeFile, type FileHandle } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -36,8 +36,64 @@ type LockOwnerState = {
 };
 
 const CONFIG_LOCK_OWNER_FILE = "owner.json";
+const CONFIG_LOCK_GUARD_FILE = ".config.lock.guard";
 const CONFIG_LOCK_WAIT_ATTEMPTS = 200;
 const CONFIG_LOCK_WAIT_MS = 25;
+
+type NativeLockApi = {
+  tryLock(fd: number): boolean;
+  unlock(fd: number): void;
+};
+
+type ConfigLockRelease = () => Promise<void>;
+
+let nativeLockApiPromise: Promise<NativeLockApi | undefined> | undefined;
+
+async function loadNativeLockApi(): Promise<NativeLockApi | undefined> {
+  nativeLockApiPromise ??= import("fs-native-extensions")
+    .then(({ tryLock, unlock }) => ({ tryLock, unlock }))
+    .catch(() => undefined);
+  return nativeLockApiPromise;
+}
+
+async function acquireOperationGuardWithApi(
+  dir: string,
+  api: NativeLockApi,
+  attempts: number
+): Promise<ConfigLockRelease | undefined> {
+  const guardPath = path.join(dir, CONFIG_LOCK_GUARD_FILE);
+  const handle: FileHandle = await open(guardPath, "a+", 0o600);
+  await chmod(guardPath, 0o600).catch(() => undefined);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (api.tryLock(handle.fd)) {
+      let released = false;
+      return async () => {
+        if (released) return;
+        released = true;
+        try {
+          api.unlock(handle.fd);
+        } finally {
+          await handle.close();
+        }
+      };
+    }
+    if (attempt + 1 < attempts) await delay(CONFIG_LOCK_WAIT_MS);
+  }
+  await handle.close();
+  return undefined;
+}
+
+export async function acquireConfigLockOperationGuard(dir: string): Promise<ConfigLockRelease> {
+  const api = await loadNativeLockApi();
+  if (!api) {
+    throw new Error("Native file locking is unavailable; h402 cannot safely coordinate config-lock reclamation on this platform.");
+  }
+  const release = await acquireOperationGuardWithApi(dir, api, CONFIG_LOCK_WAIT_ATTEMPTS);
+  if (!release) {
+    throw new Error(`Timed out waiting for h402 config-lock operation guard at ${path.join(dir, CONFIG_LOCK_GUARD_FILE)}.`);
+  }
+  return release;
+}
 
 function isLinuxProcessIdentity(value: unknown): value is LinuxProcessIdentity {
   if (!isPlainObject(value)) return false;
@@ -175,43 +231,14 @@ async function inspectConfigLock(lockDir: string): Promise<ConfigLockObservation
   }
 }
 
-function reclamationClaimPath(lockDir: string, identity: string): string {
-  const fingerprint = createHash("sha256").update(identity).digest("hex").slice(0, 16);
-  return `${lockDir}.reclaim-${fingerprint}`;
-}
-
-type LockIdentityClaim = { path: string; token: string };
-
-async function tryAcquireLockIdentityClaim(lockDir: string, identity: string): Promise<LockIdentityClaim | undefined> {
-  const claim = { path: reclamationClaimPath(lockDir, identity), token: randomUUID() };
-  try {
-    await writeFile(claim.path, claim.token, { mode: 0o600, flag: "wx" });
-    return claim;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return undefined;
-    throw error;
-  }
-}
-
-async function releaseReclamationClaim(claim: LockIdentityClaim): Promise<void> {
-  let currentToken: string;
-  try {
-    currentToken = await readFile(claim.path, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-  if (currentToken === claim.token) await rm(claim.path, { force: true });
-}
-
 async function reclaimConfigLockIfUnchanged(lockDir: string, observed: ConfigLockObservation): Promise<boolean> {
   if (!observed.reclaimable || !observed.identity) return false;
-
-  // Serialize reclaimers independently from the main lock. A delayed contender
-  // must acquire this identity-specific claim and re-inspect before it can remove
-  // anything, so it cannot act on a stale observation after a successor arrives.
-  const claim = await tryAcquireLockIdentityClaim(lockDir, observed.identity);
-  if (!claim) return false;
+  const api = await loadNativeLockApi();
+  // Without a kernel-backed guard, automatic deletion is unsafe. Preserve the
+  // lock and let the normal timeout provide manual recovery guidance instead.
+  if (!api) return false;
+  const releaseGuard = await acquireOperationGuardWithApi(path.dirname(lockDir), api, 1);
+  if (!releaseGuard) return false;
 
   try {
     const current = await inspectConfigLock(lockDir);
@@ -224,7 +251,7 @@ async function reclaimConfigLockIfUnchanged(lockDir: string, observed: ConfigLoc
       throw error;
     }
   } finally {
-    await releaseReclamationClaim(claim);
+    await releaseGuard();
   }
 }
 
@@ -262,8 +289,11 @@ export async function acquireConfigLock(dir: string) {
         throw error;
       }
       return async () => {
-        const claim = await tryAcquireLockIdentityClaim(lockDir, `owner:${owner.token}`);
-        if (!claim) {
+        const api = await loadNativeLockApi();
+        const releaseGuard = api
+          ? await acquireOperationGuardWithApi(dir, api, CONFIG_LOCK_WAIT_ATTEMPTS)
+          : undefined;
+        if (api && !releaseGuard) {
           throw new Error(`Refusing to release h402 config lock at ${lockDir}: ownership validation is already in progress.`);
         }
         try {
@@ -276,7 +306,7 @@ export async function acquireConfigLock(dir: string) {
           }
           await rm(lockDir, { recursive: true, force: true });
         } finally {
-          await releaseReclamationClaim(claim);
+          await releaseGuard?.();
         }
       };
     } catch (error) {

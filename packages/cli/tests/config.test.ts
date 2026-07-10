@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -151,6 +152,51 @@ describe("loadConfig / saveConfig", () => {
     expect(Object.keys(saved.sessions)).toHaveLength(8);
     await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
     expect((await readdir(path.dirname(lockDir))).filter((entry) => entry.startsWith(".config.lock.reclaim-"))).toEqual([]);
+  });
+
+  it.skipIf(process.platform !== "linux")("reclaims a dead config lock after the operation-guard holder is killed", async () => {
+    const dir = path.join(home, ".h402");
+    const lockDir = path.join(dir, ".config.lock");
+    await mkdir(lockDir, { recursive: true });
+    await writeFile(path.join(lockDir, "owner.json"), JSON.stringify(await deadLocalLockOwner("interrupted-guard-owner")));
+    const code = `
+      import { acquireConfigLockOperationGuard } from "./packages/cli/src/config-lock.ts";
+      await acquireConfigLockOperationGuard(${JSON.stringify(dir)});
+      console.log("GUARD_LOCKED");
+      await new Promise(() => {});
+    `;
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], {
+      cwd: path.resolve(import.meta.dirname, "../../.."),
+      env: { ...process.env, HOME: home },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`guard holder did not start: ${stderr}`)), 5_000);
+        child.stdout.on("data", (chunk) => {
+          if (String(chunk).includes("GUARD_LOCKED")) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+        child.once("error", reject);
+        child.once("exit", (code) => reject(new Error(`guard holder exited early with ${code}: ${stderr}`)));
+      });
+    } catch (error) {
+      child.kill("SIGKILL");
+      throw error;
+    }
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    child.kill("SIGKILL");
+    await exited;
+
+    const recoveredUrl = "https://after-guard-crash.example";
+    await saveConfig({ backendUrl: recoveredUrl, sessions: {}, wallets: {} });
+    expect((await loadConfig()).backendUrl).toBe(recoveredUrl);
+    await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await stat(path.join(dir, ".config.lock.guard"))).isFile()).toBe(true);
   });
 
   it("does not reclaim an ownerless legacy lock based on age alone", async () => {
