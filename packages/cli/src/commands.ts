@@ -428,9 +428,9 @@ function waitForPaymentSettlement(delayMs: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 }
 
-// Once a pending-settlement response was observed, any later failure — a network
-// drop, a gateway 5xx — leaves the charge state unknown, so the do-not-repay
-// guidance must survive even when the final error body carries no settlement code.
+// Once any signed request is sent, a network drop or gateway 5xx can hide a
+// completed settlement. Preserve the do-not-repay guidance even when the final
+// error body carries no settlement code.
 function withSettlementRiskGuidance(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes(IDEMPOTENCY_MONEY_GUIDANCE)) {
@@ -551,6 +551,7 @@ export async function callCommand(args: ParsedArgs) {
         [X402_HEADERS.paymentSignature]: signedPayment.paymentSignature
       };
       const sendSignedRequest = () => requestJson<unknown>(apiUrl, path, { method, headers: paidHeaders, body: requestBody });
+      settlementMayHaveOccurred = true;
       let paid = await sendSignedRequest();
       let sawPendingSettlement = false;
       for (const delayMs of PAYMENT_SETTLEMENT_RETRY_DELAYS_MS) {

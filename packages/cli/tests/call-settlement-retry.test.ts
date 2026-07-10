@@ -238,6 +238,48 @@ describe("callCommand pending settlement reconciliation", () => {
     expect(signOwsTypedData).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the do-not-repay guidance when the first signed request fails at the network layer", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(res(402, challenge()))
+      .mockRejectedValueOnce(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    const error = await callCommand(args()).catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("ECONNRESET");
+    expect((error as Error).message).toMatch(/do NOT sign or pay with a new idempotency key/i);
+    expect((error as Error).message).toContain(IDEMPOTENCY_KEY);
+    expect(signOwsTypedData).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(requestHeaders(fetch, 0).get("idempotency-key")).toBe(IDEMPOTENCY_KEY);
+    expect(requestHeaders(fetch, 0).get("PAYMENT-SIGNATURE")).toBeNull();
+    expect(requestHeaders(fetch, 1).get("idempotency-key")).toBe(IDEMPOTENCY_KEY);
+    expect(requestHeaders(fetch, 1).get("PAYMENT-SIGNATURE")).toBeTruthy();
+  });
+
+  it("keeps the do-not-repay guidance when the first signed request returns a generic 5xx", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(res(402, challenge()))
+      .mockResolvedValueOnce(res(500, { error: { message: "upstream exploded" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    const error = await callCommand(args()).catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("upstream exploded");
+    expect((error as Error).message).toMatch(/do NOT sign or pay with a new idempotency key/i);
+    expect((error as Error).message).toContain(IDEMPOTENCY_KEY);
+    expect(signOwsTypedData).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(requestHeaders(fetch, 0).get("idempotency-key")).toBe(IDEMPOTENCY_KEY);
+    expect(requestHeaders(fetch, 0).get("PAYMENT-SIGNATURE")).toBeNull();
+    expect(requestHeaders(fetch, 1).get("idempotency-key")).toBe(IDEMPOTENCY_KEY);
+    expect(requestHeaders(fetch, 1).get("PAYMENT-SIGNATURE")).toBeTruthy();
+  });
+
   it("keeps the do-not-repay guidance when a post-pending retry fails at the network layer", async () => {
     const fetch = vi
       .fn()
