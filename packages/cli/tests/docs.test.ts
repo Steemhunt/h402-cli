@@ -44,6 +44,18 @@ describe("doc examples stay runnable against the catalog contract", () => {
     expect(text).not.toContain("| `--api-url <url>` | all |");
   });
 
+  it("documents capability-aware auto routing and provider-bound async follow-ups", () => {
+    for (const file of Object.values(DOC_FILES)) {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain("Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it.");
+      expect(text).toContain("Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.");
+      expect(text).toContain("h402 call <followUp.routeId>");
+      expect(text).toContain("--provider <provider-from-followUp.path>");
+      expect(text).toContain("--query '<followUp.params>'");
+      expect(text).not.toMatch(/provider-specific fields[^\n]+require pinning/i);
+    }
+  });
+
   it("core README scopes selectExactRequirement to h402 canonical challenges", () => {
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");

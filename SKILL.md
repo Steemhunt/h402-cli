@@ -67,11 +67,16 @@ h402 call crypto/token-holders --name agent \
 
 - A route id is `category/action` (e.g. `web/search`, `maps/place-details`, `finance/stock-quote`).
 - `--json '{...}'` is the request body; use `--query '{...}'` for GET query params instead.
-- h402 auto-routes to the best provider. Pin one with `--provider <name>` for determinism.
-- Provider-specific fields still require pinning the owning provider with `--provider`, but `web/search` fields such as `query` and `limit` are common fields and work on the default `auto` route.
+- Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it. `web/search` accepts common fields such as `query` and `limit` on the default `auto` route, and capable candidates can also accept native fields such as `freshness` without a pin. Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.
 - Every command prints **JSON to stdout** (including `wallet fund` and `wallet balance`); failures print to stderr and exit non-zero.
 - A successful `call` returns `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the provider output from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing`, `paidBy`, `ledgerEntryId`, optional `paymentTransaction`, optional `followUp`, and optional `signedAmount` for paid x402 calls. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
-- If `h402.followUp` is present, the response is a job receipt, not the final result. Follow `h402.followUp.method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the async job completes.
+- If `h402.followUp` is present, the response is a job receipt, not the final result. Follow `h402.followUp.method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the async job completes. The follow-up path is provider-bound, so preserve its provider segment in the CLI call (`<followUp.params>` means its JSON-encoded object):
+
+  ```bash
+  h402 call <followUp.routeId> \
+    --provider <provider-from-followUp.path> \
+    --query '<followUp.params>'
+  ```
 
 ## How payment works (per call, non-custodial)
 
