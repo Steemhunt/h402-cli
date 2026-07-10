@@ -44,6 +44,16 @@ describe("doc examples stay runnable against the catalog contract", () => {
     expect(text).not.toContain("| `--api-url <url>` | all |");
   });
 
+  it("payable token-holder examples use one valid catalog address instead of an EVM placeholder", () => {
+    const validInput = '{"tokenAddress":"0x37f0c2915CeCC7e977183B8543Fc0864d03E064C","chain":"base"}';
+    for (const label of ["package README.md", "SKILL.md"]) {
+      expect(readFileSync(DOC_FILES[label], "utf8")).toContain(validInput);
+    }
+    for (const file of Object.values(DOC_FILES)) {
+      expect(readFileSync(file, "utf8")).not.toMatch(/"tokenAddress"\s*:\s*"0x(?:\.{3}|…)+"/i);
+    }
+  });
+
   it("keeps OWS native platform support and preflight guidance synchronized", () => {
     const supported = "OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64.";
     // Native-only operations are enumerated precisely: config-mapped wallets keep

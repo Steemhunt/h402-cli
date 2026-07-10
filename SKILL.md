@@ -61,11 +61,11 @@ A few dollars of USDC covers hundreds of calls — most routes cost **$0.001–$
 h402 search "token holders"
 
 # 2. (optional) Preview the price before paying
-h402 quote crypto/token-holders --json '{"tokenAddress":"0x...","chain":"base"}'
+h402 quote crypto/token-holders --json '{"tokenAddress":"0x37f0c2915CeCC7e977183B8543Fc0864d03E064C","chain":"base"}'
 
 # 3. Call it — pays automatically on the 402 challenge, returns the JSON result
 h402 call crypto/token-holders --name agent \
-  --json '{"tokenAddress":"0x...","chain":"base"}'
+  --json '{"tokenAddress":"0x37f0c2915CeCC7e977183B8543Fc0864d03E064C","chain":"base"}'
 ```
 
 - A route id is `category/action` (e.g. `web/search`, `maps/place-details`, `finance/stock-quote`).
