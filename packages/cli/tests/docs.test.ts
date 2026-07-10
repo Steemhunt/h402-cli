@@ -44,6 +44,19 @@ describe("doc examples stay runnable against the catalog contract", () => {
     expect(text).not.toContain("| `--api-url <url>` | all |");
   });
 
+  it("keeps OWS native platform support and preflight guidance synchronized", () => {
+    const supported = "OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64.";
+    const unsupported = "Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot manage wallets, authenticate, or sign a payable call until OWS ships a matching native binding.";
+    const preflight = "Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.";
+    for (const file of Object.values(DOC_FILES)) {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain(supported);
+      expect(text).toContain(unsupported);
+      expect(text).toContain(preflight);
+      expect(text).not.toMatch(/bundles? (?:the )?`?ows`? wallet binary/i);
+    }
+  });
+
   it("core README scopes selectExactRequirement to h402 canonical challenges", () => {
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");

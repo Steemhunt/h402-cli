@@ -13,16 +13,16 @@ Building an AI agent? See [`SKILL.md`](../../SKILL.md) for an agent-ready walkth
 npm install -g @h402/cli
 ```
 
-> The [Open Wallet Standard](https://github.com/open-wallet-standard) core library ships with the CLI, so a global install is self-contained on supported platforms.
+> The CLI uses [Open Wallet Standard](https://github.com/open-wallet-standard) core, whose wallet and signing methods lazy-load a platform package.
 >
-> OWS native bindings currently target macOS/Linux glibc on x64/arm64. Non-wallet commands (`--help`, `search`, `quote`) lazy-load OWS and still work without native bindings; wallet creation and payment signing require those JS native bindings.
+> OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot manage wallets, authenticate, or sign a payable call until OWS ships a matching native binding. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
 
 ## Quickstart
 
 ```bash
+h402 wallet list                                     # read-only native-binding preflight
 h402 wallet create --name agent                      # local wallet (passphrase-less by default)
 h402 wallet fund --name agent                        # prints the Base USDC address + instructions
-h402 wallet list                                     # inspect local OWS wallets
 h402 wallet restore                                  # re-adopt existing OWS wallets into config
 h402 call web/search --name agent --json '{"query":"agent APIs"}'
 ```

@@ -24,11 +24,14 @@ PDF parsing, weather, and more. Browse everything at https://h402.hunt.town/cata
 
 ## One-time setup
 
-You need the `h402` CLI and a Base USDC–funded wallet. The CLI signs locally and
-bundles the `ows` wallet binary, so a global install is self-contained.
+Install the `h402` CLI first. It uses `@open-wallet-standard/core`, whose wallet and
+signing methods lazy-load a platform package.
+
+OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot manage wallets, authenticate, or sign a payable call until OWS ships a matching native binding. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
 
 ```bash
-npm install -g @h402/cli            # the CLI (bundles the OWS wallet binary)
+npm install -g @h402/cli            # install the CLI
+h402 wallet list                     # read-only native-binding preflight; [] is OK
 ```
 
 Calls go to the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` to point at another backend.
