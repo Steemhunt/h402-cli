@@ -1,13 +1,39 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { backendUrl, loadConfig, saveConfig, type CliConfig } from "../src/config";
+import { backendUrl, loadConfig, saveConfig, updateConfig, type CliConfig } from "../src/config";
 
 const PROD_URL = "https://h402.hunt.town";
 
 function configWith(backend?: string): CliConfig {
   return { backendUrl: backend as string, sessions: {}, wallets: {} };
+}
+
+async function deadLocalLockOwner(token: string) {
+  const [machineId, bootId, pidNamespace] = await Promise.all([
+    readFile("/etc/machine-id", "utf8"),
+    readFile("/proc/sys/kernel/random/boot_id", "utf8"),
+    readlink("/proc/self/ns/pid")
+  ]);
+  const machineIdHash = createHash("sha256").update("h402-config-lock\0").update(machineId.trim()).digest("hex");
+  return {
+    version: 2,
+    pid: process.pid,
+    hostname: os.hostname(),
+    createdAt: new Date(0).toISOString(),
+    token,
+    linuxProcess: {
+      machineIdHash,
+      bootId: bootId.trim(),
+      pidNamespace: pidNamespace.trim(),
+      // The current PID exists, but this impossible start time proves that the
+      // recorded owner process instance is gone rather than merely reusing a PID.
+      startTicks: "0"
+    }
+  };
 }
 
 describe("backendUrl resolution", () => {
@@ -94,6 +120,129 @@ describe("loadConfig / saveConfig", () => {
     };
     await saveConfig(config);
     await expect(loadConfig()).resolves.toEqual(config);
+  });
+
+  it.skipIf(process.platform !== "linux")("reclaims a config lock owned by a dead process instance", async () => {
+    const lockDir = path.join(home, ".h402", ".config.lock");
+    await mkdir(lockDir, { recursive: true });
+    await writeFile(path.join(lockDir, "owner.json"), JSON.stringify(await deadLocalLockOwner("dead-owner")));
+
+    await saveConfig({ backendUrl: PROD_URL, sessions: { [PROD_URL]: "recovered" }, wallets: {} });
+
+    await expect(loadConfig()).resolves.toMatchObject({ sessions: { [PROD_URL]: "recovered" } });
+    await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readdir(path.dirname(lockDir))).filter((entry) => entry.startsWith(".config.lock.reclaim-"))).toEqual([]);
+  }, 10_000);
+
+  it.skipIf(process.platform !== "linux")("serializes simultaneous writers while reclaiming the same dead-owner lock", async () => {
+    const lockDir = path.join(home, ".h402", ".config.lock");
+    await mkdir(lockDir, { recursive: true });
+    await writeFile(path.join(lockDir, "owner.json"), JSON.stringify(await deadLocalLockOwner("dead-race")));
+
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        updateConfig((config) => {
+          config.sessions[`https://writer-${index}.example`] = String(index);
+        })
+      )
+    );
+
+    const saved = await loadConfig();
+    expect(Object.keys(saved.sessions)).toHaveLength(8);
+    await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readdir(path.dirname(lockDir))).filter((entry) => entry.startsWith(".config.lock.reclaim-"))).toEqual([]);
+  });
+
+  it("does not reclaim an ownerless legacy lock based on age alone", async () => {
+    const lockDir = path.join(home, ".h402", ".config.lock");
+    await mkdir(lockDir, { recursive: true });
+
+    await expect(saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: { recovered: { address: "0xabc" } } })).rejects.toThrow(
+      /lock has no valid owner metadata.*If no h402 process is writing config, remove this lock path and retry/
+    );
+
+    await expect(stat(lockDir)).resolves.toBeDefined();
+    await expect(stat(configFile)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 10_000);
+
+  it.skipIf(process.platform !== "linux")("does not reclaim an owner from a different machine instance", async () => {
+    const lockDir = path.join(home, ".h402", ".config.lock");
+    await mkdir(lockDir, { recursive: true });
+    const owner = await deadLocalLockOwner("remote-owner");
+    owner.linuxProcess.machineIdHash = "different-machine-instance";
+    await writeFile(path.join(lockDir, "owner.json"), JSON.stringify(owner));
+
+    await expect(saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: {} })).rejects.toThrow(
+      /different machine instance.*If no h402 process is writing config, remove this lock path and retry/
+    );
+    await expect(stat(lockDir)).resolves.toBeDefined();
+  }, 10_000);
+
+  it("waits for a live competing writer and preserves serialized updates", async () => {
+    let enteredFirst!: () => void;
+    let releaseFirst!: () => void;
+    const firstEntered = new Promise<void>((resolve) => {
+      enteredFirst = resolve;
+    });
+    const firstMayFinish = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const first = updateConfig(async (config) => {
+      config.sessions["https://one.example"] = "one";
+      enteredFirst();
+      await firstMayFinish;
+    });
+    await firstEntered;
+
+    const lockDir = path.join(home, ".h402", ".config.lock");
+    const owner = JSON.parse(await readFile(path.join(lockDir, "owner.json"), "utf8"));
+    expect(owner).toEqual(
+      expect.objectContaining({
+        version: 2,
+        pid: process.pid,
+        hostname: os.hostname(),
+        createdAt: expect.any(String),
+        token: expect.any(String)
+      })
+    );
+    expect(Number.isFinite(Date.parse(owner.createdAt))).toBe(true);
+    if (process.platform === "linux") {
+      expect(owner.linuxProcess).toEqual(
+        expect.objectContaining({ machineIdHash: expect.any(String), bootId: expect.any(String), pidNamespace: expect.any(String), startTicks: expect.any(String) })
+      );
+    }
+
+    let secondEntered = false;
+    const second = updateConfig((config) => {
+      secondEntered = true;
+      config.sessions["https://two.example"] = "two";
+    });
+    await delay(75);
+    expect(secondEntered).toBe(false);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(secondEntered).toBe(true);
+    await expect(loadConfig()).resolves.toMatchObject({
+      sessions: { "https://one.example": "one", "https://two.example": "two" }
+    });
+  });
+
+  it("does not remove a successor lock when ownership changes before release", async () => {
+    const lockDir = path.join(home, ".h402", ".config.lock");
+    const ownerFile = path.join(lockDir, "owner.json");
+
+    await expect(
+      updateConfig(async (config) => {
+        config.sessions[PROD_URL] = "saved";
+        const owner = JSON.parse(await readFile(ownerFile, "utf8"));
+        await writeFile(ownerFile, JSON.stringify({ ...owner, token: "successor-token" }));
+      })
+    ).rejects.toThrow(/Refusing to release h402 config lock.*ownership changed/);
+
+    expect(JSON.parse(await readFile(ownerFile, "utf8"))).toMatchObject({ token: "successor-token" });
+    await rm(lockDir, { recursive: true });
   });
 
   it("serializes concurrent saves and preserves independent wallet/session updates", async () => {
