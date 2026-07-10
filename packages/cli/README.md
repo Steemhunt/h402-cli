@@ -111,7 +111,7 @@ Async routes may return a job receipt instead of the final result. When `h402.fo
 ```bash
 h402 search "token holders"                        # JSON to stdout
 h402 call crypto/token-holders --name agent \
-  --json '{"tokenAddress":"0x...","chain":"base"}' # JSON result, non-zero exit on failure
+  --json '{"tokenAddress":"0x37f0c2915CeCC7e977183B8543Fc0864d03E064C","chain":"base"}' # JSON result, non-zero exit on failure
 ```
 
 Signing needs no flags for the default passphrase-less wallets. Only when a wallet was created with an opt-in passphrase, `export H402_WALLET_PASSPHRASE=...` (or pass `--passphrase <s>`) — the CLI tells you exactly this when it hits such a wallet non-interactively.
