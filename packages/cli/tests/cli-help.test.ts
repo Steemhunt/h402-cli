@@ -44,6 +44,22 @@ describe("help rendering", () => {
     expect(exampleLines.length).toBeGreaterThan(0);
   });
 
+  it("describes wallet-free discovery, quoting, and conditional call payment", () => {
+    const top = topLevelHelp();
+    const call = commandHelp(["call"]);
+    expect(top).toContain("Search the catalog without a wallet");
+    expect(top).toContain("Preview the x402 PAYMENT-REQUIRED envelope without paying or a wallet");
+    expect(top).toContain("Execute a route and pay if challenged");
+    expect(call).toContain("Execute a route and pay if challenged");
+    expect(call).toContain("h402 call ai/news");
+    expect(call).not.toContain("Execute a paid proxy call");
+  });
+
+  it("distinguishes a signing wallet from an optional bonus-credit session", () => {
+    expect(commandHelp(["wallet", "create"])).toContain("local OWS signing wallet");
+    expect(commandHelp(["auth"])).toContain("bonus-credit session");
+  });
+
   it("wallet help lists subcommands", () => {
     const help = commandHelp(["wallet"]);
     for (const sub of ["create", "list", "restore", "address", "balance", "fund"]) {

@@ -45,7 +45,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
     subcommands: {
       create: {
         usage: "h402 wallet create [flags]",
-        summary: "Create a local OWS wallet (passphrase-less by default; prints its address)",
+        summary: "Create a local OWS signing wallet (no auth session; passphrase-less by default; prints its address)",
         flags: [FLAGS.name, FLAGS.passphrase, FLAGS.noPassphrase],
         examples: ["h402 wallet create --name agent"]
       },
@@ -63,25 +63,25 @@ export const COMMANDS: Record<string, CommandSpec> = {
   },
   auth: {
     usage: "h402 auth [flags]",
-    summary: "Sign in to a backend with a wallet signature (enables bonus credits)",
+    summary: "Create a backend bonus-credit session with a wallet signature",
     flags: [FLAGS.name, FLAGS.wallet, FLAGS.apiUrl, FLAGS.passphrase, FLAGS.noPassphrase]
   },
   credits: { usage: "h402 credits [flags]", summary: "Show the bonus-credit balance for the signed-in session", flags: [FLAGS.apiUrl] },
   search: {
     usage: "h402 search <query> [flags]",
-    summary: "Search the catalog (JSON results)",
+    summary: "Search the catalog without a wallet (JSON results)",
     flags: [FLAGS.apiUrl, FLAGS.limit],
     examples: ['h402 search "web search"']
   },
   quote: {
     usage: "h402 quote <category/action> [flags]",
-    summary: "Preview the x402 PAYMENT-REQUIRED envelope without paying",
+    summary: "Preview the x402 PAYMENT-REQUIRED envelope without paying or a wallet",
     flags: [FLAGS.apiUrl, FLAGS.json, FLAGS.query, FLAGS.provider, FLAGS.method],
     examples: ["h402 quote web/search --json '{\"query\":\"agent APIs\"}'"]
   },
   call: {
     usage: "h402 call <category/action> [flags]",
-    summary: "Execute a paid proxy call (signs + retries on 402)",
+    summary: "Execute a route and pay if challenged (free routes need no wallet)",
     flags: [
       FLAGS.name,
       FLAGS.wallet,
@@ -96,7 +96,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
       FLAGS.maxUsd,
       FLAGS.idempotencyKey
     ],
-    examples: ["h402 call web/search --name agent --json '{\"query\":\"agent APIs\"}'"]
+    examples: ["h402 call ai/news", "h402 call web/search --name agent --json '{\"query\":\"agent APIs\"}'"]
   }
 };
 

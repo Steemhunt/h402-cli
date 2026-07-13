@@ -74,6 +74,47 @@ describe("doc examples stay runnable against the catalog contract", () => {
     }
   });
 
+  it("documents wallet-free routes and conditional payment fields", () => {
+    for (const file of Object.values(DOC_FILES)) {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain("Browsing, quoting, and free-route calls do not require a local wallet.");
+      expect(text).toContain("A funded local wallet is required only if the first response is a payable `402`.");
+      expect(text).toContain("Wallet creation creates a local signing wallet only; `h402 auth` creates the optional bonus-credit session.");
+      expect(text).toContain("h402 call ai/news");
+      expect(text).toContain("`ledgerEntryId` is present for credit or x402-paid calls");
+      expect(text).toContain("`paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields");
+      expect(text).toContain("free calls omit all three");
+      expect(text).not.toMatch(/(?:the|a) first request returns `?402`?/i);
+
+      // An initial 2xx is not necessarily free: with an authenticated session,
+      // bonus credits can cover a paid route. Classification lives in h402.paidBy.
+      expect(text).toContain(
+        "An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session."
+      );
+      expect(text).not.toMatch(/free route returns (?:its|a) direct\s+2xx result/i);
+      expect(text).not.toMatch(/2xx → return the free JSON result/);
+    }
+  });
+
+  it("documents capability-aware auto routing and provider-bound async follow-ups", () => {
+    for (const file of Object.values(DOC_FILES)) {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain("Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it.");
+      expect(text).toContain("Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.");
+      expect(text).toContain("h402 call <followUp.routeId>");
+      expect(text).toContain("--provider <provider-from-followUp.path>");
+      expect(text).not.toMatch(/provider-specific fields[^\n]+require pinning/i);
+
+      // The template must stay method-aware: GET polls use --query, POST polls
+      // use --json — the CLI rejects --query combined with POST.
+      expect(text).toContain("Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST");
+      expect(text).toContain("# followUp.method GET (most status polls):");
+      expect(text).toContain("--query '<followUp.params>'");
+      expect(text).toContain("# followUp.method POST (e.g. ai/music-status-async):");
+      expect(text).toContain("--json '<followUp.params>'");
+    }
+  });
+
   it("core README scopes selectExactRequirement to h402 canonical challenges", () => {
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");
