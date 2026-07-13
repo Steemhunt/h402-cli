@@ -12,8 +12,10 @@ description: >-
 
 h402 is the **x402 router for agent capabilities**: one canonical endpoint per task.
 You call the *task* (e.g. `web/search`), and h402 routes the call to the best provider
-and returns a free result or settles a payable challenge in Base USDC. No per-vendor API
-keys or subscriptions; a funded wallet is needed only for a payable challenge.
+and returns a free result or settles a payable challenge in Base USDC. Behind each
+capability, providers compete on price and live quality; h402 auto-pins the best one
+to your call. No per-vendor API keys or subscriptions; a funded wallet is needed only
+for a payable challenge.
 
 ## When to use this
 
