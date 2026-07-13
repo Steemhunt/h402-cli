@@ -47,9 +47,21 @@ You call a task (`category/action`); the proxy answers with an x402 `402 PAYMENT
 
 A successful `call` prints `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }`: the upstream provider's JSON is under `data`; route-level normalized metadata may appear under `meta`; and `h402` carries `routeId`, `provider`, `selectedCandidateId`, `routing`, `paidBy`, `ledgerEntryId`, optional `paymentTransaction`, optional `followUp` instructions, and, for paid x402 calls, `signedAmount`. Do not discard `meta` — it is part of the route contract when present. On failure the CLI exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is a human-readable diagnostic, and `detail` carries the backend's JSON error when the request reached the backend.
 
-Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes.
+Async routes may return a job receipt instead of the final result. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes. The follow-up path is provider-bound, so preserve the provider segment from that path when translating the instruction to CLI form. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
 
-> `web/search` accepts common fields such as `query` and `limit` on the default `auto` route. Provider-specific fields on other routes/candidates still require pinning the owning provider with `--provider`; otherwise auto-routing may reject the request.
+```bash
+# followUp.method GET (most status polls):
+h402 call <followUp.routeId> \
+  --provider <provider-from-followUp.path> \
+  --query '<followUp.params>'
+
+# followUp.method POST (e.g. ai/music-status-async):
+h402 call <followUp.routeId> \
+  --provider <provider-from-followUp.path> \
+  --json '<followUp.params>'
+```
+
+Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it. `web/search` accepts common fields such as `query` and `limit` on the default `auto` route, and capable candidates can also accept native fields such as `freshness` without a pin. Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.
 
 ## Development
 
