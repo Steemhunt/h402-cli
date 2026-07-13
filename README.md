@@ -31,6 +31,7 @@ h402 quote web/search --json '{"query":"agent payments"}'
 h402 call ai/news                                      # free; no wallet required
 
 # Set up a signer only when you want to call a route that returns a payable 402:
+h402 wallet list                                       # read-only native-binding preflight; [] is OK
 h402 wallet create --name agent
 h402 wallet fund --name agent
 h402 call web/search --name agent --json '{"query":"agent payments"}'
@@ -40,9 +41,9 @@ Browsing, quoting, and free-route calls do not require a local wallet. Wallet cr
 
 The CLI targets the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` only when pointing at another backend such as local dev.
 
-The CLI signs locally through [Open Wallet Standard](https://github.com/open-wallet-standard) core, so a global install is self-contained on supported platforms — no separate wallet install needed.
+The CLI signs locally through [Open Wallet Standard](https://github.com/open-wallet-standard) core, whose wallet and signing methods lazy-load a platform package.
 
-OWS native bindings currently target macOS/Linux glibc on x64/arm64. Wallet-free operations (`--help`, `search`, `quote`, and free-route `call`) do not load OWS and still work without native bindings; wallet management, `auth` signing, and payable-call signing require those JS native bindings.
+OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot create, list, restore, or auto-adopt wallets, run `h402 auth`, or sign a payable call until OWS ships a matching native binding. `wallet address`, `wallet balance`, and `wallet fund` keep working for wallets already mapped in `~/.h402/config.json` — but USDC funded from an unsupported host can only be spent by signing on a supported platform. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
 
 ## How it works
 

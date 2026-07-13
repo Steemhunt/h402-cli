@@ -54,6 +54,26 @@ describe("doc examples stay runnable against the catalog contract", () => {
     }
   });
 
+  it("keeps OWS native platform support and preflight guidance synchronized", () => {
+    const supported = "OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64.";
+    // Native-only operations are enumerated precisely: config-mapped wallets keep
+    // address/balance/fund working without bindings, so "manage wallets" is too broad.
+    const unsupported =
+      "Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot create, list, restore, or auto-adopt wallets, run `h402 auth`, or sign a payable call until OWS ships a matching native binding.";
+    const configMapped =
+      "`wallet address`, `wallet balance`, and `wallet fund` keep working for wallets already mapped in `~/.h402/config.json` — but USDC funded from an unsupported host can only be spent by signing on a supported platform.";
+    const preflight = "Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.";
+    for (const file of Object.values(DOC_FILES)) {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain(supported);
+      expect(text).toContain(unsupported);
+      expect(text).toContain(configMapped);
+      expect(text).toContain(preflight);
+      expect(text).not.toMatch(/bundles? (?:the )?`?ows`? wallet binary/i);
+      expect(text).not.toMatch(/cannot manage wallets/i);
+    }
+  });
+
   it("documents wallet-free routes and conditional payment fields", () => {
     for (const file of Object.values(DOC_FILES)) {
       const text = readFileSync(file, "utf8");

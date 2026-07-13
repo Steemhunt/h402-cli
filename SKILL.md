@@ -24,10 +24,12 @@ PDF parsing, weather, and more. Browse everything at https://h402.hunt.town/cata
 
 ## One-time setup
 
-Install the `h402` CLI first. Browsing, quoting, and free-route calls do not require a local wallet.
+Install the `h402` CLI first. Browsing, quoting, and free-route calls do not require a local wallet. The CLI uses `@open-wallet-standard/core`, whose wallet and signing methods lazy-load a platform package.
+
+OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot create, list, restore, or auto-adopt wallets, run `h402 auth`, or sign a payable call until OWS ships a matching native binding. `wallet address`, `wallet balance`, and `wallet fund` keep working for wallets already mapped in `~/.h402/config.json` — but USDC funded from an unsupported host can only be spent by signing on a supported platform. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
 
 ```bash
-npm install -g @h402/cli            # the CLI (bundles the OWS wallet binary)
+npm install -g @h402/cli            # install the CLI
 ```
 
 Calls go to the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` to point at another backend.
@@ -44,6 +46,7 @@ For payable routes, create a wallet — passphrase-less by default, the right se
 (opt into one with `--passphrase <s>` only if you want it; then every signing command needs it):
 
 ```bash
+h402 wallet list                     # read-only native-binding preflight; [] is OK
 h402 wallet create --name agent
 # -> {"wallet":{"name":"agent","address":"0x..."}}
 ```

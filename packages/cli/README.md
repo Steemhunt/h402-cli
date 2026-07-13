@@ -13,9 +13,9 @@ Building an AI agent? See [`SKILL.md`](../../SKILL.md) for an agent-ready walkth
 npm install -g @h402/cli
 ```
 
-> The [Open Wallet Standard](https://github.com/open-wallet-standard) core library ships with the CLI, so a global install is self-contained on supported platforms.
+> The CLI uses [Open Wallet Standard](https://github.com/open-wallet-standard) core, whose wallet and signing methods lazy-load a platform package.
 >
-> OWS native bindings currently target macOS/Linux glibc on x64/arm64. Wallet-free operations (`--help`, `search`, `quote`, and free-route `call`) do not load OWS and still work without native bindings; wallet management, `auth` signing, and payable-call signing require those JS native bindings.
+> OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot create, list, restore, or auto-adopt wallets, run `h402 auth`, or sign a payable call until OWS ships a matching native binding. `wallet address`, `wallet balance`, and `wallet fund` keep working for wallets already mapped in `~/.h402/config.json` — but USDC funded from an unsupported host can only be spent by signing on a supported platform. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
 
 ## Quickstart
 
@@ -25,6 +25,7 @@ h402 quote web/search --json '{"query":"agent APIs"}' # wallet-free quote
 h402 call ai/news                                     # free route; no wallet required
 
 # Only for routes that answer with a payable 402:
+h402 wallet list                                     # read-only native-binding preflight; [] is OK
 h402 wallet create --name agent                      # local signing wallet
 h402 wallet fund --name agent                        # Base USDC address + instructions
 h402 call web/search --name agent --json '{"query":"agent APIs"}'
