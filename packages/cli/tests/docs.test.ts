@@ -97,10 +97,13 @@ describe("doc examples stay runnable against the catalog contract", () => {
   });
 
   it("documents capability-aware auto routing and provider-bound async follow-ups", () => {
+    const asyncRouteConvention =
+      "Async parent route IDs end in `-async`; a single-parent follow-up is `<parent-route>-status`, while shared multi-parent follow-ups may use a shared `*-status` name.";
     for (const file of Object.values(DOC_FILES)) {
       const text = readFileSync(file, "utf8");
       expect(text).toContain("Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it.");
       expect(text).toContain("Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.");
+      expect(text).toContain(asyncRouteConvention);
       expect(text).toContain("h402 call <followUp.routeId>");
       expect(text).toContain("--provider <provider-from-followUp.path>");
       expect(text).not.toMatch(/provider-specific fields[^\n]+require pinning/i);
@@ -110,7 +113,8 @@ describe("doc examples stay runnable against the catalog contract", () => {
       expect(text).toContain("Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST");
       expect(text).toContain("# followUp.method GET (most status polls):");
       expect(text).toContain("--query '<followUp.params>'");
-      expect(text).toContain("# followUp.method POST (e.g. ai/music-status-async):");
+      expect(text).toContain("# followUp.method POST (e.g. ai/music-generate-async-status):");
+      expect(text).not.toContain("ai/music-status-async");
       expect(text).toContain("--json '<followUp.params>'");
     }
   });
