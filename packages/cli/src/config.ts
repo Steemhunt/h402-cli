@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
+import { acquireConfigLock } from "./config-lock.js";
 
 export type CliConfig = {
   backendUrl: string;
@@ -75,24 +75,6 @@ async function readConfigFile(file: string): Promise<CliConfig | undefined> {
 
 export async function loadConfig(): Promise<CliConfig> {
   return (await readConfigFile(configPath())) ?? defaultConfig();
-}
-
-async function acquireConfigLock(dir: string) {
-  const lockDir = path.join(dir, ".config.lock");
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      await mkdir(lockDir, { mode: 0o700 });
-      return async () => {
-        await rm(lockDir, { recursive: true, force: true });
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-        throw error;
-      }
-      await delay(25);
-    }
-  }
-  throw new Error(`Timed out waiting for h402 config lock at ${lockDir}`);
 }
 
 function cloneConfig(config: CliConfig): CliConfig {
