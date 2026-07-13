@@ -119,6 +119,17 @@ describe("doc examples stay runnable against the catalog contract", () => {
     }
   });
 
+  it("documents one-authorization pending-settlement recovery", () => {
+    for (const label of ["package README.md", "SKILL.md"]) {
+      const text = readFileSync(DOC_FILES[label], "utf8");
+      expect(text).toMatch(/resends the exact\s+`PAYMENT-SIGNATURE`, key,\s+method, path, provider, and body/);
+      expect(text).toMatch(/One CLI invocation\s+creates at most one payment authorization/);
+      expect(text).toMatch(/server-issued\s+replacement challenges are\s+refused/i);
+      expect(text).toMatch(/does\s+not persist payment signatures/);
+      expect(text).toMatch(/matching\s+`payment_settlement_failed` response with `paid: false` and `safeToStartNewCall: true`\s+confirms that the original authorization was not paid/);
+    }
+  });
+
   it("core README scopes selectExactRequirement to h402 canonical challenges", () => {
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");

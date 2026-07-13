@@ -87,7 +87,13 @@ describe("requestJson", () => {
     });
   });
 
-  for (const code of ["idempotency_key_already_used", "idempotency_key_in_progress"]) {
+  for (const code of [
+    "idempotency_key_already_used",
+    "idempotency_key_in_progress",
+    "idempotency_key_conflict",
+    "payment_settlement_pending",
+    "payment_settlement_reconciled"
+  ]) {
     it(`adds no-double-charge guidance for ${code}`, () => {
       const result = {
         backendUrl: "https://staging.example",
@@ -117,4 +123,32 @@ describe("requestJson", () => {
       });
     });
   }
+
+  it("does not add uncertain-settlement guidance to a conclusive payment failure", () => {
+    const result = {
+      backendUrl: "https://staging.example",
+      url: "https://staging.example/routes/auto/web/search",
+      status: 409,
+      statusText: "Conflict",
+      headers: new Headers(),
+      body: {
+        error: {
+          code: "payment_settlement_failed",
+          message: "The original payment authorization was not settled; start a separate call to try again."
+        }
+      }
+    };
+
+    const error = (() => {
+      try {
+        assertOk(result);
+      } catch (thrown) {
+        return thrown;
+      }
+    })();
+
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as Error).message).toMatch(/original payment authorization was not settled/i);
+    expect((error as Error).message).not.toMatch(/may already be completed, charged, or still settling/i);
+  });
 });
