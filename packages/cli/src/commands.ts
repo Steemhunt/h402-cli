@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { assertOk, requestJson } from "./api.js";
+import { assertOk, backendErrorCode, IDEMPOTENCY_MONEY_GUIDANCE, requestJson, type ApiResponse } from "./api.js";
 import { BASE_USDC_BALANCE_ASSET, BASE_USDC_BALANCE_NETWORK, getBaseUsdcBalance } from "./base-usdc-balance.js";
 import { backendUrl, loadConfig, updateConfig, type CliConfig } from "./config.js";
 import { CliError } from "./errors.js";
@@ -415,6 +415,66 @@ function authorizationClockFromResponseDate(headers: Headers) {
   return Number.isFinite(millis) ? Math.floor(millis / 1000) : undefined;
 }
 
+const PAYMENT_SETTLEMENT_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
+const REPLACEMENT_IDEMPOTENCY_KEY_HEADER = "x-h402-replacement-idempotency-key";
+
+function isPaymentSettlementPending(response: ApiResponse<unknown>) {
+  return response.status === 409 && backendErrorCode(response.body) === "payment_settlement_pending";
+}
+
+function waitForPaymentSettlement(delayMs: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+}
+
+// Once a signed request is sent, a network drop or non-terminal response can
+// hide a completed settlement. Keep that uncertainty visible so callers do not
+// create a second authorization accidentally.
+function withSettlementRiskGuidance(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes(IDEMPOTENCY_MONEY_GUIDANCE)) {
+    return error;
+  }
+  return new CliError(`${message}. ${IDEMPOTENCY_MONEY_GUIDANCE}`, error instanceof CliError ? error.detail : undefined);
+}
+
+function isPaymentSettlementFailure(error: unknown): error is CliError {
+  return error instanceof CliError && backendErrorCode(error.detail) === "payment_settlement_failed";
+}
+
+function isConclusiveSettlementFailure(error: unknown, idempotencyKey: string) {
+  if (!isPaymentSettlementFailure(error) || !error.detail || typeof error.detail !== "object") {
+    return false;
+  }
+  const backendError = (error.detail as { error?: unknown }).error;
+  return (
+    backendError !== null &&
+    typeof backendError === "object" &&
+    (backendError as { idempotencyKey?: unknown }).idempotencyKey === idempotencyKey &&
+    (backendError as { paid?: unknown }).paid === false &&
+    (backendError as { safeToStartNewCall?: unknown }).safeToStartNewCall === true
+  );
+}
+
+function isReplacementPaymentResponse(response: ApiResponse<unknown>) {
+  return response.headers.has(REPLACEMENT_IDEMPOTENCY_KEY_HEADER);
+}
+
+function automaticReplacementRefused(response: ApiResponse<unknown>, idempotencyKey: string) {
+  return withSettlementRiskGuidance(
+    new CliError(
+      "Automatic replacement payment refused. This invocation did not sign a replacement authorization. Start a separate explicit h402 call only if you intentionally accept a new payment; the original settlement remains unknown.",
+      {
+        code: "automatic_replacement_refused",
+        idempotencyKey,
+        settlementStatus: "unknown",
+        replacementAuthorizationSigned: false,
+        separateCallRequired: true,
+        url: response.url
+      }
+    )
+  );
+}
+
 export async function callCommand(args: ParsedArgs) {
   rejectExtraPositionals(args, 2, "call", "Did you forget --json for a request body or --query for URL parameters? Run: h402 call --help");
   const config = await loadConfig();
@@ -429,6 +489,7 @@ export async function callCommand(args: ParsedArgs) {
   const paymentCap = maxUsd(args, config);
   const token = config.sessions[apiUrl];
   const path = buildProxyPath(routeId, query, provider);
+  const requestBody = body === undefined ? undefined : JSON.stringify(body);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
   };
@@ -437,12 +498,17 @@ export async function callCommand(args: ParsedArgs) {
     headers.authorization = `Bearer ${token}`;
   }
 
+  let signedRequestSent = false;
   try {
     const first = await requestJson<unknown>(apiUrl, path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: requestBody
     });
+
+    if (isReplacementPaymentResponse(first)) {
+      throw automaticReplacementRefused(first, idempotencyKey);
+    }
 
     const paymentRequired = first.status === 402 ? paymentRequiredFromResponse(first.headers, first.body) : null;
     if (!paymentRequired) {
@@ -465,17 +531,31 @@ export async function callCommand(args: ParsedArgs) {
         authorizationNow: authorizationClockFromResponseDate(first.headers)
       })
     );
-    const paid = await requestJson<unknown>(apiUrl, path, {
-      method,
-      headers: {
-        "idempotency-key": idempotencyKey,
-        [X402_HEADERS.paymentSignature]: paymentSignature
-      },
-      body: body === undefined ? undefined : JSON.stringify(body)
-    });
+    const paidHeaders = {
+      "idempotency-key": idempotencyKey,
+      [X402_HEADERS.paymentSignature]: paymentSignature
+    };
+    const sendSignedRequest = () => requestJson<unknown>(apiUrl, path, { method, headers: paidHeaders, body: requestBody });
+
+    signedRequestSent = true;
+    let paid = await sendSignedRequest();
+    if (isReplacementPaymentResponse(paid)) {
+      throw automaticReplacementRefused(paid, idempotencyKey);
+    }
+    for (const delayMs of PAYMENT_SETTLEMENT_RETRY_DELAYS_MS) {
+      if (!isPaymentSettlementPending(paid)) break;
+      await waitForPaymentSettlement(delayMs);
+      paid = await sendSignedRequest();
+      if (isReplacementPaymentResponse(paid)) {
+        throw automaticReplacementRefused(paid, idempotencyKey);
+      }
+    }
 
     await printJson(withSignedAmount(assertOk(paid), accepted));
   } catch (error) {
-    throw withIdempotencyKey(error, idempotencyKey);
+    const settlementRiskIsUnresolved =
+      (signedRequestSent || isPaymentSettlementFailure(error)) && !isConclusiveSettlementFailure(error, idempotencyKey);
+    const guardedError = settlementRiskIsUnresolved ? withSettlementRiskGuidance(error) : error;
+    throw withIdempotencyKey(guardedError, idempotencyKey);
   }
 }

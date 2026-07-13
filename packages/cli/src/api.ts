@@ -111,7 +111,7 @@ function backendMessage(body: unknown): string | undefined {
   return typeof record.message === "string" ? record.message : undefined;
 }
 
-function backendErrorCode(body: unknown): string | undefined {
+export function backendErrorCode(body: unknown): string | undefined {
   if (!body || typeof body !== "object") {
     return undefined;
   }
@@ -123,12 +123,23 @@ function backendErrorCode(body: unknown): string | undefined {
   return typeof record.code === "string" ? record.code : undefined;
 }
 
+const MONEY_SENSITIVE_IDEMPOTENCY_CODES = new Set([
+  "idempotency_key_already_used",
+  "idempotency_key_in_progress",
+  "idempotency_key_conflict",
+  "payment_settlement_pending",
+  "payment_settlement_reconciled"
+]);
+
+export const IDEMPOTENCY_MONEY_GUIDANCE =
+  "The earlier request for this idempotency key may already be completed, charged, or still settling; do NOT sign or pay with a new idempotency key unless you intentionally accept a second charge.";
+
 function idempotencyGuidance(body: unknown): string | undefined {
   const code = backendErrorCode(body);
-  if (code !== "idempotency_key_already_used" && code !== "idempotency_key_in_progress") {
+  if (!code || !MONEY_SENSITIVE_IDEMPOTENCY_CODES.has(code)) {
     return undefined;
   }
-  return "The earlier request for this idempotency key may already be completed, charged, or still settling; do NOT sign or pay with a new idempotency key unless you intentionally accept a second charge.";
+  return IDEMPOTENCY_MONEY_GUIDANCE;
 }
 
 export function assertOk<T>(response: ApiResponse<T>): T {

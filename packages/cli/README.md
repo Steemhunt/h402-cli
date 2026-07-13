@@ -93,11 +93,16 @@ when building the EIP-3009 validity window, reducing client clock-skew failures 
 calls. If you've run `h402 auth`, bonus credits are drawn before USDC unless you pass
 `--no-credit`.
 
-`--idempotency-key` is double-charge protection, not result replay. If a paid response is
-lost, reusing the same key prevents a duplicate server-side operation, but the server may
-return `idempotency_key_already_used`/`idempotency_key_in_progress` instead of replaying
-the previous result. Do not switch to a new key unless you intentionally accept buying the
-call again.
+`--idempotency-key` is double-charge protection, not result replay. If the server reports
+`payment_settlement_pending`, the running CLI resends the exact `PAYMENT-SIGNATURE`, key,
+method, path, provider, and body for bounded reconciliation attempts. One CLI invocation
+creates at most one payment authorization: server-issued replacement challenges are
+refused, and a separate explicit call is required to create a new payment. The CLI does
+not persist payment signatures, so after the process exits it cannot reconstruct the
+original signed request. Pending, reconciled, network, and gateway errors after a signed
+send warn that settlement may still have occurred; only a matching
+`payment_settlement_failed` response with `paid: false` and `safeToStartNewCall: true`
+confirms that the original authorization was not paid.
 
 ## Agents & automation
 
