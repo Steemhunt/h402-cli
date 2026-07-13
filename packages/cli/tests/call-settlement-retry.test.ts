@@ -339,6 +339,25 @@ describe("callCommand pending settlement reconciliation", () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
+  it("refuses an initial replacement challenge before signing", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(
+      res(402, challenge("2000"), {
+        "x-h402-previous-idempotency-key": IDEMPOTENCY_KEY,
+        "x-h402-replacement-idempotency-key": REPLACEMENT_KEY
+      })
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const error = await callCommand(args({ "max-usd": "0.01" })).catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/without a preceding pending-settlement response/i);
+    expect((error as Error).message).toMatch(/do NOT sign or pay with a new idempotency key/i);
+    expect((error as Error).message).toContain(IDEMPOTENCY_KEY);
+    expect(signOwsTypedData).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses a replacement challenge without a preceding pending-settlement response", async () => {
     const fetch = vi
       .fn()

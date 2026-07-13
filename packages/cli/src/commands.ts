@@ -510,6 +510,16 @@ export async function callCommand(args: ParsedArgs) {
       body: requestBody
     });
 
+    if (first.status === 402 && first.headers.has(REPLACEMENT_IDEMPOTENCY_KEY_HEADER)) {
+      throw withSettlementRiskGuidance(
+        new CliError("Replacement payment challenge arrived without a preceding pending-settlement response; refusing to sign.", {
+          currentIdempotencyKey: idempotencyKey,
+          replacementIdempotencyKey: first.headers.get(REPLACEMENT_IDEMPOTENCY_KEY_HEADER),
+          url: first.url
+        })
+      );
+    }
+
     const paymentRequired = first.status === 402 ? paymentRequiredFromResponse(first.headers, first.body) : null;
     if (!paymentRequired) {
       // A 2xx means the route answered without payment (free, or covered by credit).
