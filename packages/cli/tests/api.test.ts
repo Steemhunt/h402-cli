@@ -124,7 +124,7 @@ describe("requestJson", () => {
     });
   }
 
-  it("does not add uncertain-settlement guidance to a conclusive payment failure", () => {
+  it("leaves payment settlement proof validation to the call command", () => {
     const result = {
       backendUrl: "https://staging.example",
       url: "https://staging.example/routes/auto/web/search",
@@ -148,6 +148,7 @@ describe("requestJson", () => {
     })();
 
     expect(error).toBeInstanceOf(CliError);
+    expect(error).toMatchObject({ detail: { error: { code: "payment_settlement_failed" } } });
     expect((error as Error).message).toMatch(/original payment authorization was not settled/i);
     expect((error as Error).message).not.toMatch(/may already be completed, charged, or still settling/i);
   });

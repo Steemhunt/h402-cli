@@ -437,15 +437,18 @@ function withSettlementRiskGuidance(error: unknown) {
   return new CliError(`${message}. ${IDEMPOTENCY_MONEY_GUIDANCE}`, error instanceof CliError ? error.detail : undefined);
 }
 
+function isPaymentSettlementFailure(error: unknown): error is CliError {
+  return error instanceof CliError && backendErrorCode(error.detail) === "payment_settlement_failed";
+}
+
 function isConclusiveSettlementFailure(error: unknown, idempotencyKey: string) {
-  if (!(error instanceof CliError) || !error.detail || typeof error.detail !== "object") {
+  if (!isPaymentSettlementFailure(error) || !error.detail || typeof error.detail !== "object") {
     return false;
   }
   const backendError = (error.detail as { error?: unknown }).error;
   return (
     backendError !== null &&
     typeof backendError === "object" &&
-    backendErrorCode(error.detail) === "payment_settlement_failed" &&
     (backendError as { idempotencyKey?: unknown }).idempotencyKey === idempotencyKey &&
     (backendError as { paid?: unknown }).paid === false &&
     (backendError as { safeToStartNewCall?: unknown }).safeToStartNewCall === true
@@ -550,7 +553,9 @@ export async function callCommand(args: ParsedArgs) {
 
     await printJson(withSignedAmount(assertOk(paid), accepted));
   } catch (error) {
-    const guardedError = signedRequestSent && !isConclusiveSettlementFailure(error, idempotencyKey) ? withSettlementRiskGuidance(error) : error;
+    const settlementRiskIsUnresolved =
+      (signedRequestSent || isPaymentSettlementFailure(error)) && !isConclusiveSettlementFailure(error, idempotencyKey);
+    const guardedError = settlementRiskIsUnresolved ? withSettlementRiskGuidance(error) : error;
     throw withIdempotencyKey(guardedError, idempotencyKey);
   }
 }

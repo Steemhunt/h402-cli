@@ -298,4 +298,30 @@ describe("callCommand pending settlement reconciliation", () => {
     expect(signOwsTypedData).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it.each([
+    {
+      label: "omits its safety proof",
+      error: { code: "payment_settlement_failed", message: "Payment settlement failed.", idempotencyKey: IDEMPOTENCY_KEY }
+    },
+    {
+      label: "belongs to another idempotency key",
+      error: {
+        code: "payment_settlement_failed",
+        message: "Payment settlement failed.",
+        idempotencyKey: "idem-other",
+        paid: false,
+        safeToStartNewCall: true
+      }
+    }
+  ])("keeps do-not-repay guidance when an initial settlement failure $label", async ({ error: backendError }) => {
+    const fetch = vi.fn().mockResolvedValueOnce(res(409, { error: backendError }));
+    vi.stubGlobal("fetch", fetch);
+
+    const error = await callCommand(args()).catch((thrown: unknown) => thrown);
+
+    expect((error as Error).message).toMatch(/may already be completed, charged, or still settling/i);
+    expect(signOwsTypedData).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });
