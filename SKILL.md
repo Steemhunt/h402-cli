@@ -12,8 +12,8 @@ description: >-
 
 h402 is the **x402 router for agent capabilities**: one canonical endpoint per task.
 You call the *task* (e.g. `web/search`), and h402 routes the call to the best provider
-and settles per call in Base USDC. No per-vendor API keys, no subscriptions — just a
-funded wallet and one CLI.
+and returns a free result or settles a payable challenge in Base USDC. No per-vendor API
+keys or subscriptions; a funded wallet is needed only for a payable challenge.
 
 ## When to use this
 
@@ -24,8 +24,7 @@ PDF parsing, weather, and more. Browse everything at https://h402.hunt.town/cata
 
 ## One-time setup
 
-You need the `h402` CLI and a Base USDC–funded wallet. The CLI signs locally and
-bundles the `ows` wallet binary, so a global install is self-contained.
+Install the `h402` CLI first. Browsing, quoting, and free-route calls do not require a local wallet.
 
 ```bash
 npm install -g @h402/cli            # the CLI (bundles the OWS wallet binary)
@@ -33,7 +32,15 @@ npm install -g @h402/cli            # the CLI (bundles the OWS wallet binary)
 
 Calls go to the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` to point at another backend.
 
-Create a wallet — passphrase-less by default, the right setup for an agent budget wallet
+```bash
+h402 search "AI news"
+h402 quote web/search --json '{"query":"agent APIs"}'
+h402 call ai/news                    # direct 2xx; no wallet or payment
+```
+
+Wallet creation creates a local signing wallet only; `h402 auth` creates the optional bonus-credit session. A funded local wallet is required only if the first response is a payable `402`.
+
+For payable routes, create a wallet — passphrase-less by default, the right setup for an agent budget wallet
 (opt into one with `--passphrase <s>` only if you want it; then every signing command needs it):
 
 ```bash
@@ -69,7 +76,7 @@ h402 call crypto/token-holders --name agent \
 - `--json '{...}'` is the request body; use `--query '{...}'` for GET query params instead.
 - Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it. `web/search` accepts common fields such as `query` and `limit` on the default `auto` route, and capable candidates can also accept native fields such as `freshness` without a pin. Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.
 - Every command prints **JSON to stdout** (including `wallet fund` and `wallet balance`); failures print to stderr and exit non-zero.
-- A successful `call` returns `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the provider output from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing`, `paidBy`, `ledgerEntryId`, optional `paymentTransaction`, optional `followUp`, and optional `signedAmount` for paid x402 calls. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
+- A successful `call` returns `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the provider output from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing`, and `paidBy`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `followUp` describes async work. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
 - If `h402.followUp` is present, the response is a job receipt, not the final result. Follow `h402.followUp.method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the async job completes. The follow-up path is provider-bound, so preserve its provider segment in the CLI call. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
 
   ```bash
@@ -86,10 +93,9 @@ h402 call crypto/token-holders --name agent \
 
 ## How payment works (per call, non-custodial)
 
-The first request returns `402` with an x402 `PAYMENT-REQUIRED` challenge. The CLI signs
-a Base USDC EIP-3009 `transferWithAuthorization` **locally** (your key never leaves the
-machine), attaches it as a `PAYMENT-SIGNATURE` header, and retries the same request. You
-are charged the exact per-call price and get the result back. Pass `--max-usd <amount>`
+The CLI sends the first request before resolving a wallet. An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Only a payable `402` makes the CLI resolve a wallet, sign a Base USDC EIP-3009
+`transferWithAuthorization` **locally** (your key never leaves the machine), attach it as
+a `PAYMENT-SIGNATURE` header, and retry the same request. Pass `--max-usd <amount>`
 (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse
 signing a challenge above that USDC cap. Paid call output includes `h402.signedAmount`
 as a receipt of the amount signed. The CLI uses the first 402 response's `Date` header
