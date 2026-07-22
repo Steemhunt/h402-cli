@@ -5,6 +5,7 @@ import {
   creditsCommand,
   quoteCommand,
   searchCommand,
+  showCommand,
   walletCommand
 } from "./commands.js";
 import { errorEnvelope } from "./errors.js";
@@ -45,6 +46,7 @@ async function main() {
   if (command === "auth") return authCommand(args);
   if (command === "credits") return creditsCommand(args);
   if (command === "search") return searchCommand(args);
+  if (command === "show") return showCommand(args);
   if (command === "quote") return quoteCommand(args);
   if (command === "call") return callCommand(args);
 

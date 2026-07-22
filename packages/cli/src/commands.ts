@@ -1,11 +1,30 @@
 import { randomUUID } from "node:crypto";
 import { assertOk, backendErrorCode, IDEMPOTENCY_MONEY_GUIDANCE, requestJson, type ApiResponse } from "./api.js";
 import { BASE_USDC_BALANCE_ASSET, BASE_USDC_BALANCE_NETWORK, getBaseUsdcBalance } from "./base-usdc-balance.js";
+import {
+  explicitShowSelection,
+  fetchCatalogRoute,
+  resolveProvider,
+  selectCatalogCandidate,
+  withProviderSelection
+} from "./catalog.js";
 import { backendUrl, loadConfig, updateConfig, type CliConfig } from "./config.js";
 import { CliError } from "./errors.js";
 import { createOwsWallet, getOwsWallet, listOwsWallets, signOwsMessage } from "./ows.js";
 import { promptPassphrase } from "./prompt.js";
-import { buildProxyPath, flagBoolean, flagString, parseJsonFlag, parseQueryFlag, printJson, requireValue, resolveMethod, type ParsedArgs } from "./utils.js";
+import {
+  assertConcreteProvider,
+  buildProxyPath,
+  encodeRouteId,
+  flagBoolean,
+  flagString,
+  parseJsonFlag,
+  parseQueryFlag,
+  printJson,
+  requireValue,
+  resolveMethod,
+  type ParsedArgs
+} from "./utils.js";
 import { createPaymentSignatureHeader, paymentRequiredFromResponse, selectBaseUsdcRequirement, X402_HEADERS } from "./x402.js";
 
 const DEFAULT_WALLET_NAME = "h402";
@@ -309,6 +328,17 @@ function rejectQueryOnPost(method: "GET" | "POST", query: Record<string, unknown
   }
 }
 
+function explicitProviderFlag(flags: ParsedArgs["flags"]) {
+  const provider = flagString(flags, "provider");
+  if (provider === undefined) {
+    return undefined;
+  }
+  if (!provider) {
+    throw new Error("Flag --provider requires a non-empty provider slug.");
+  }
+  return assertConcreteProvider(provider);
+}
+
 export async function searchCommand(args: ParsedArgs) {
   // Validate the required query before any network work.
   const query = requireValue(args.positional.slice(1).join(" ").trim() || undefined, 'search query is required (e.g. h402 search "web search")');
@@ -317,6 +347,39 @@ export async function searchCommand(args: ParsedArgs) {
   const params = new URLSearchParams({ q: query, limit: searchLimit(args.flags) });
   const result = assertOk(await requestJson(apiUrl, `/api/catalog/search?${params.toString()}`));
   await printJson(result);
+}
+
+export async function showCommand(args: ParsedArgs) {
+  rejectExtraPositionals(args, 2, "show");
+  const routeId = requireValue(args.positional[1], "route id is required");
+  encodeRouteId(routeId);
+  const provider = explicitProviderFlag(args.flags);
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  const { route } = await fetchCatalogRoute(apiUrl, routeId);
+  if (provider === undefined) {
+    await printJson({ route });
+    return;
+  }
+  const candidate = selectCatalogCandidate(route, provider);
+  const routeSummary = {
+    id: route.id,
+    routeKey: route.routeKey,
+    category: route.category,
+    action: route.action,
+    title: route.title,
+    summary: route.summary,
+    method: route.method,
+    tags: route.tags,
+    defaultProvider: route.defaultProvider,
+    defaultCandidateKey: route.defaultCandidateKey,
+    stats: route.stats
+  };
+  await printJson({
+    route: routeSummary,
+    candidate,
+    providerSelection: explicitShowSelection(routeId, provider)
+  });
 }
 
 export async function creditsCommand(args: ParsedArgs) {
@@ -333,26 +396,28 @@ export async function creditsCommand(args: ParsedArgs) {
 
 export async function quoteCommand(args: ParsedArgs) {
   rejectExtraPositionals(args, 2, "quote", "Did you forget --json for a request body or --query for URL parameters? Run: h402 quote --help");
-  const config = await loadConfig();
-  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const routeId = requireValue(args.positional[1], "route id is required");
+  encodeRouteId(routeId);
   const body = parseJsonFlag(args.flags);
   const query = parseQueryFlag(args.flags);
-  const provider = flagString(args.flags, "provider");
+  const explicitProvider = explicitProviderFlag(args.flags);
   const method = resolveMethod(args.flags, body !== undefined);
   rejectQueryOnPost(method, query);
-  const result = await requestJson(apiUrl, buildProxyPath(routeId, query, provider), {
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "quote");
+  const result = await requestJson(apiUrl, buildProxyPath(routeId, providerSelection.provider, query), {
     method,
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const paymentRequired = paymentRequiredFromResponse(result.headers, result.body);
   if (paymentRequired) {
-    await printJson({ paymentRequired });
+    await printJson({ providerSelection, paymentRequired });
     return;
   }
   // No challenge: a free route returns its result with a 2xx. Any non-2xx
-  // (404/500/...) is a real error and must exit non-zero, not print as a result.
-  await printJson(assertOk(result));
+  // (404/410/500/...) is a real error and must exit non-zero, not print as a result.
+  await printJson(withProviderSelection(assertOk(result), providerSelection));
 }
 
 function parseUsdMicros(raw: string, source: string) {
@@ -477,18 +542,20 @@ function automaticReplacementRefused(response: ApiResponse<unknown>, idempotency
 
 export async function callCommand(args: ParsedArgs) {
   rejectExtraPositionals(args, 2, "call", "Did you forget --json for a request body or --query for URL parameters? Run: h402 call --help");
-  const config = await loadConfig();
-  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const routeId = requireValue(args.positional[1], "route id is required");
+  encodeRouteId(routeId);
   const body = parseJsonFlag(args.flags);
   const query = parseQueryFlag(args.flags);
-  const provider = flagString(args.flags, "provider");
+  const explicitProvider = explicitProviderFlag(args.flags);
   const method = resolveMethod(args.flags, body !== undefined);
   rejectQueryOnPost(method, query);
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const paymentCap = maxUsd(args, config);
   const token = config.sessions[apiUrl];
-  const path = buildProxyPath(routeId, query, provider);
+  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "call");
+  const path = buildProxyPath(routeId, providerSelection.provider, query);
   const requestBody = body === undefined ? undefined : JSON.stringify(body);
   const headers: Record<string, string> = {
     "idempotency-key": idempotencyKey
@@ -515,7 +582,7 @@ export async function callCommand(args: ParsedArgs) {
       // A 2xx means the route answered without payment (free, or covered by credit).
       // A non-2xx first response (incl. an unparseable 402) is a real error: assertOk
       // exits non-zero instead of printing the error body as a successful result.
-      await printJson(assertOk(first));
+      await printJson(withProviderSelection(assertOk(first), providerSelection));
       return;
     }
 
@@ -551,7 +618,7 @@ export async function callCommand(args: ParsedArgs) {
       }
     }
 
-    await printJson(withSignedAmount(assertOk(paid), accepted));
+    await printJson(withProviderSelection(withSignedAmount(assertOk(paid), accepted), providerSelection));
   } catch (error) {
     const settlementRiskIsUnresolved =
       (signedRequestSent || isPaymentSettlementFailure(error)) && !isConclusiveSettlementFailure(error, idempotencyKey);

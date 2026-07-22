@@ -38,7 +38,7 @@ function config(overrides: Partial<CliConfig> = {}): CliConfig {
 }
 
 function args(flags: ParsedArgs["flags"] = {}): ParsedArgs {
-  return { positional: ["call", "web/search"], flags };
+  return { positional: ["call", "web/search"], flags: { provider: "demo", ...flags } };
 }
 
 function challenge(amount: unknown) {

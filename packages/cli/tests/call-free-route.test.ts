@@ -28,7 +28,7 @@ vi.mock("../src/ows.js", () => ({
 const { callCommand } = await import("../src/commands");
 
 function args(flags: ParsedArgs["flags"] = {}): ParsedArgs {
-  return { positional: ["call", "ai/image-generate-async-status"], flags };
+  return { positional: ["call", "ai/image-generate-async-status"], flags: { provider: "stablestudio-image", ...flags } };
 }
 
 function res(status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -61,7 +61,7 @@ describe("callCommand free routes", () => {
     await callCommand(args({ query: '{"jobId":"job_123"}' }));
 
     expect(fetch).toHaveBeenCalledWith(
-      "https://test.example/routes/auto/ai/image-generate-async-status?jobId=job_123",
+      "https://test.example/routes/stablestudio-image/ai/image-generate-async-status?jobId=job_123",
       expect.objectContaining({ method: "GET" })
     );
     expect(stdout).toHaveBeenCalledWith(expect.stringContaining("complete"));

@@ -22,7 +22,8 @@ const FLAGS = {
   apiUrl: { name: "api-url", value: "<url>", desc: "Backend base URL (or H402_API_URL; default https://h402.hunt.town)" },
   json: { name: "json", value: "'{...}'", desc: "Request body (sets method to POST)" },
   query: { name: "query", value: "'{...}'", desc: "URL query params; values must be string/number/boolean" },
-  provider: { name: "provider", value: "<name>", desc: "Pin a provider (default auto)" },
+  provider: { name: "provider", value: "<name>", desc: "Select a concrete provider (omitted: resolve the catalog default)" },
+  showProvider: { name: "provider", value: "<name>", desc: "Select one concrete provider (omitted: list all enabled providers)" },
   method: { name: "method", value: "GET|POST", desc: "Override the HTTP method" },
   passphrase: {
     name: "passphrase",
@@ -69,15 +70,21 @@ export const COMMANDS: Record<string, CommandSpec> = {
   credits: { usage: "h402 credits [flags]", summary: "Show the bonus-credit balance for the signed-in session", flags: [FLAGS.apiUrl] },
   search: {
     usage: "h402 search <query> [flags]",
-    summary: "Search the catalog without a wallet (JSON results)",
+    summary: "Search the catalog without a wallet (compact JSON results)",
     flags: [FLAGS.apiUrl, FLAGS.limit],
     examples: ['h402 search "web search"']
+  },
+  show: {
+    usage: "h402 show <category/action> [flags]",
+    summary: "Inspect a route and its full provider-native contracts",
+    flags: [FLAGS.apiUrl, FLAGS.showProvider],
+    examples: ["h402 show web/search", "h402 show web/search --provider stableenrich-exa"]
   },
   quote: {
     usage: "h402 quote <category/action> [flags]",
     summary: "Preview the x402 PAYMENT-REQUIRED envelope without paying or a wallet",
     flags: [FLAGS.apiUrl, FLAGS.json, FLAGS.query, FLAGS.provider, FLAGS.method],
-    examples: ["h402 quote web/search --json '{\"query\":\"agent APIs\"}'"]
+    examples: ["h402 quote web/search --provider stableenrich-exa --json '{\"query\":\"agent APIs\"}'"]
   },
   call: {
     usage: "h402 call <category/action> [flags]",
@@ -96,7 +103,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
       FLAGS.maxUsd,
       FLAGS.idempotencyKey
     ],
-    examples: ["h402 call ai/news", "h402 call web/search --name agent --json '{\"query\":\"agent APIs\"}'"]
+    examples: ["h402 call ai/news", "h402 call web/search --provider stableenrich-exa --name agent --json '{\"query\":\"agent APIs\"}'"]
   }
 };
 
@@ -147,7 +154,7 @@ function renderFlag(flag: Flag): string {
 }
 
 export function topLevelHelp(): string {
-  const lines = ["h402 — the x402 router for agent capabilities", "", "Usage: h402 <command> [flags]", "", "Commands:"];
+  const lines = ["h402 — the x402 capability store", "", "Usage: h402 <command> [flags]", "", "Commands:"];
   for (const [name, spec] of Object.entries(COMMANDS)) {
     lines.push(`  ${name.padEnd(10)} ${spec.summary}`);
   }

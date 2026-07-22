@@ -6,9 +6,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
 [![Base · x402](https://img.shields.io/badge/Base-x402-fc6f6f.svg)](https://x402.org)
 
-Open-source toolkit for **h402 — the x402 router for agent capabilities**. One endpoint per task: providers compete behind each capability, h402 auto-pins the best one per call, and settles in Base USDC over x402.
+Open-source toolkit for **h402 — the x402 capability store for agents**. Discover a task, inspect its enabled providers and provider-native contracts, then execute one concrete provider path with Base USDC settlement when required.
 
-> x402 is the rail. h402 is the router.
+> x402 is the payment rail. h402 is the capability store and execution surface.
 
 - **Browse capabilities** → https://h402.hunt.town/catalog
 - **Docs & agent quickstart** → https://h402.hunt.town/docs
@@ -26,15 +26,17 @@ Open-source toolkit for **h402 — the x402 router for agent capabilities**. One
 ```bash
 npm install -g @h402/cli
 
-h402 search "web search"
-h402 quote web/search --json '{"query":"agent payments"}'
-h402 call ai/news                                      # free; no wallet required
+h402 search "web search"                              # compact route/provider summaries
+h402 show web/search                                    # full route + all provider contracts
+h402 show web/search --provider stableenrich-exa        # one full provider-native contract
+h402 quote web/search --provider stableenrich-exa --json '{"query":"agent payments"}'
+h402 call ai/news                                      # free; omitted provider resolves defaultProvider
 
 # Set up a signer only when you want to call a route that returns a payable 402:
 h402 wallet list                                       # read-only native-binding preflight; [] is OK
 h402 wallet create --name agent
 h402 wallet fund --name agent
-h402 call web/search --name agent --json '{"query":"agent payments"}'
+h402 call web/search --provider stableenrich-exa --name agent --json '{"query":"agent payments"}'
 ```
 
 Browsing, quoting, and free-route calls do not require a local wallet. Wallet creation creates a local signing wallet only; `h402 auth` creates the optional bonus-credit session. A funded local wallet is required only if the first response is a payable `402`.
@@ -47,11 +49,13 @@ OWS wallet creation and signing use native bindings available only on macOS and 
 
 ## How it works
 
-You call a task (`category/action`) before the CLI resolves a wallet. An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Only when the first response is an x402 `402 PAYMENT-REQUIRED` does the CLI resolve a funded local wallet, sign a Base USDC EIP-3009 authorization locally, and retry. Pass `--max-usd <amount>` (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse signing a challenge above that USDC cap. Keys never leave your machine.
+Each call uses one concrete provider. Without `--provider`, the CLI resolves the route's current `defaultProvider` from full catalog detail before sending the call. The result includes `h402.cliProviderSelection` with the selected provider and a reproducible pinned command; passing `--provider` skips default resolution and calls that pinned path directly. A `410` response is never retried automatically: read its machine-readable alternatives, inspect the replacement with `h402 show`, then start a new explicit call.
 
-A successful `call` prints `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }`: the upstream provider's JSON is under `data`; route-level normalized metadata may appear under `meta`; and `h402` always carries `routeId`, `provider`, `selectedCandidateId`, `routing`, and `paidBy`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `followUp` instructions describe async work. Do not discard `meta` — it is part of the route contract when present. On failure the CLI exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is a human-readable diagnostic, and `detail` carries the backend's JSON error when the request reached the backend.
+After provider resolution, the CLI sends the request before resolving a wallet. An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Only when the first response is an x402 `402 PAYMENT-REQUIRED` does the CLI resolve a funded local wallet, sign a Base USDC EIP-3009 authorization locally, and retry the same pinned provider path. Pass `--max-usd <amount>` (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse signing a challenge above that USDC cap. Keys never leave your machine.
 
-Async routes may return a job receipt instead of the final result. Async parent route IDs end in `-async`; a single-parent follow-up is `<parent-route>-status`, while shared multi-parent follow-ups may use a shared `*-status` name. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes. The follow-up path is provider-bound, so preserve the provider segment from that path when translating the instruction to CLI form. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
+A successful `call` prints `{ "data": <provider-native body>, "h402": <execution metadata> }`: `data` stays provider-native, while `h402` carries the provider-pinned execution receipt plus CLI-added `cliProviderSelection`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `h402.followUp` instructions describe async work. On failure the CLI exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is human-readable and `detail` preserves machine-readable backend recovery fields such as alternatives.
+
+Async routes may return a job receipt instead of the final result. Async parent route IDs end in `-async`; a single-parent follow-up is `<parent-route>-status`, while shared multi-parent follow-ups may use a shared `*-status` name. When `h402.followUp` is present, follow its provider-native `params` object together with `method`, `path`, `docsUrl`, and `instruction` until the provider reports completion. The follow-up path is provider-bound, so preserve its provider segment. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
 
 ```bash
 # followUp.method GET (most status polls):
@@ -65,7 +69,7 @@ h402 call <followUp.routeId> \
   --json '<followUp.params>'
 ```
 
-Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it. `web/search` accepts common fields such as `query` and `limit` on the default `auto` route, and capable candidates can also accept native fields such as `freshness` without a pin. Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.
+`h402 search` returns compact route/provider summaries. Use `h402 show <route>` for full provider-native schemas and samples, then pin a provider for reproducibility.
 
 ## Development
 

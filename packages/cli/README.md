@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/%40h402%2Fcli?label=%40h402%2Fcli)](https://www.npmjs.com/package/@h402/cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 
-Local, non-custodial CLI for [h402](../../README.md) — the x402 router for agent capabilities. Browse and quote without a wallet, call free routes directly, and pay from a local wallet only when challenged over x402. **Private keys never leave your machine.**
+Local, non-custodial CLI for [h402](../../README.md) — the x402 capability store for agents. Search compact summaries, inspect provider-native contracts, execute one concrete provider path, and pay from a local wallet only when challenged over x402. **Private keys never leave your machine.**
 
 Building an AI agent? See [`SKILL.md`](../../SKILL.md) for an agent-ready walkthrough.
 
@@ -20,15 +20,17 @@ npm install -g @h402/cli
 ## Quickstart
 
 ```bash
-h402 search "AI news"                                # wallet-free catalog browsing
-h402 quote web/search --json '{"query":"agent APIs"}' # wallet-free quote
-h402 call ai/news                                     # free route; no wallet required
+h402 search "web search"                              # compact wallet-free summaries
+h402 show web/search                                   # full route + provider contracts
+h402 show web/search --provider stableenrich-exa       # one full native contract
+h402 quote web/search --provider stableenrich-exa --json '{"query":"agent APIs"}'
+h402 call ai/news                                      # free; omitted provider resolves defaultProvider
 
 # Only for routes that answer with a payable 402:
 h402 wallet list                                     # read-only native-binding preflight; [] is OK
 h402 wallet create --name agent                      # local signing wallet
 h402 wallet fund --name agent                        # Base USDC address + instructions
-h402 call web/search --name agent --json '{"query":"agent APIs"}'
+h402 call web/search --provider stableenrich-exa --name agent --json '{"query":"agent APIs"}'
 ```
 
 Browsing, quoting, and free-route calls do not require a local wallet. Wallet creation creates a local signing wallet only; `h402 auth` creates the optional bonus-credit session. A funded local wallet is required only if the first response is a payable `402`.
@@ -47,7 +49,8 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | `h402 wallet fund --name <n>` | Print the Base USDC deposit address and funding instructions |
 | `h402 auth --name <n>` | Create an optional backend bonus-credit session with a wallet signature |
 | `h402 credits` | Show the bonus-credit balance for the signed-in session |
-| `h402 search <query>` | Search the catalog (JSON results) |
+| `h402 search <query>` | Search compact route/provider summaries |
+| `h402 show <category/action> [--provider <name>]` | Fetch full route or one provider-native contract |
 | `h402 quote <category/action>` | Preview the x402 `PAYMENT-REQUIRED` envelope without paying |
 | `h402 call <category/action>` | Execute a route and pay if challenged; free routes need no wallet |
 
@@ -59,10 +62,10 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 | --- | --- | --- |
 | `--name <wallet>` | wallet create/address/balance/fund; auth; call | Wallet to use (default `h402`) |
 | `--wallet 0x...` | wallet address/balance/fund; auth; call | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
-| `--api-url <url>` | auth, credits, search, quote, call | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`) |
+| `--api-url <url>` | auth, credits, search, show, quote, call | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`) |
 | `--json '{...}'` | quote, call | Request body (sets method to POST) |
 | `--query '{...}'` | quote, call | URL query params (GET); values must be strings/numbers/booleans |
-| `--provider <name>` | quote, call | Pin a provider; default is `auto` (h402 picks the best) |
+| `--provider <name>` | show, quote, call | Select a concrete provider; quote/call omission resolves the catalog default, while show omission lists all enabled providers |
 | `--method GET\|POST` | quote, call | Override the method (inferred from `--json` otherwise) |
 | `--passphrase [<s>]` | wallet create, auth, call | Passphrase for a passphrase-protected wallet; omit the value to be prompted (or `H402_WALLET_PASSPHRASE`) |
 | `--no-passphrase` | wallet create, auth, call | Force passphrase-less signing even if `H402_WALLET_PASSPHRASE` is set (the default needs no flag) |
@@ -75,12 +78,15 @@ Route ids are `category/action`, e.g. `web/search`, `maps/place-details`, `finan
 
 ## How a call works
 
+Each call uses one concrete provider. Without `--provider`, the CLI resolves the route's current `defaultProvider` from `/api/catalog/routes/<route>` before any execution request; explicit `--provider` goes straight to that pinned path. Every success includes `h402.cliProviderSelection` with the source, provider, and reproducible pinned command. A `410` response is never retried automatically — inspect its machine-readable alternatives with `h402 show`, then start a new explicit call.
+
 ```
 h402 call web/search --json '{"query":"..."}'
    │
-   ├─ initial request (before wallet resolution)
+   ├─ resolve defaultProvider from full route detail
+   ├─ request /routes/<provider>/web/search (before wallet resolution)
    ├─ 2xx → returned directly; h402.paidBy says free or credit
-   └─ payable 402 → resolve wallet, sign Base USDC locally, then retry the same request
+   └─ payable 402 → resolve wallet, sign Base USDC locally, then retry that same pinned request
 ```
 
 If a route returns a payable 402, you're charged the exact per-call price (most paid
@@ -106,11 +112,11 @@ confirms that the original authorization was not paid.
 
 ## Agents & automation
 
-Every command prints JSON to stdout — `search`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
+Every command prints JSON to stdout — `search`, `show`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
 
-A successful `call` is wrapped as `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the upstream provider payload from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing` (`auto`/`manual`), and `paidBy` (`x402-exact`/`credit`/`free`). `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `followUp` describes async work. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is always a readable diagnostic; `detail` holds the backend's JSON error when one was returned.
+A successful `call` is wrapped as `{ "data": <provider-native body>, "h402": <execution metadata> }` — `data` remains provider-native, and `h402` includes the provider-pinned execution receipt plus CLI-added `cliProviderSelection`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `h402.followUp` describes async work. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr; `detail` preserves machine-readable route/provider alternatives.
 
-Async routes may return a job receipt instead of the final result. Async parent route IDs end in `-async`; a single-parent follow-up is `<parent-route>-status`, while shared multi-parent follow-ups may use a shared `*-status` name. When `h402.followUp` is present, follow its `method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the job completes. The follow-up path is provider-bound, so preserve the provider segment from that path when translating the instruction to CLI form. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
+Async routes may return a job receipt instead of the final result. Async parent route IDs end in `-async`; a single-parent follow-up is `<parent-route>-status`, while shared multi-parent follow-ups may use a shared `*-status` name. When `h402.followUp` is present, pass its provider-native `params` object according to `method` and preserve the provider segment from `path`. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
 
 ```bash
 # followUp.method GET (most status polls):
@@ -124,12 +130,13 @@ h402 call <followUp.routeId> \
   --json '<followUp.params>'
 ```
 
-Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it. `web/search` accepts common fields such as `query` and `limit` on the default `auto` route, and capable candidates can also accept native fields such as `freshness` without a pin. Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.
+`h402 search` intentionally returns compact summaries. Fetch full schemas, request examples, and provider-native samples with `h402 show <route>` before pinning.
 
 ```bash
-h402 search "token holders"                        # JSON to stdout
-h402 call crypto/token-holders --name agent \
-  --json '{"tokenAddress":"0x37f0c2915CeCC7e977183B8543Fc0864d03E064C","chain":"base"}' # JSON result, non-zero exit on failure
+h402 search "token holders"                        # compact JSON to stdout
+h402 show crypto/token-holders --provider nansen     # full native schema/sample
+h402 call crypto/token-holders --provider nansen --name agent \
+  --json '{"chain":"base","token_address":"0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913"}' # JSON result, non-zero exit on failure
 ```
 
 Signing needs no flags for the default passphrase-less wallets. Only when a wallet was created with an opt-in passphrase, `export H402_WALLET_PASSPHRASE=...` (or pass `--passphrase <s>`) — the CLI tells you exactly this when it hits such a wallet non-interactively.

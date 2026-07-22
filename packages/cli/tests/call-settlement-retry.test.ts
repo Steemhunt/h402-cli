@@ -77,6 +77,21 @@ function requestHeaders(fetch: ReturnType<typeof vi.fn>, index: number) {
   return new Headers(init?.headers);
 }
 
+const catalogRoute = {
+  id: "web/search",
+  routeKey: "search",
+  category: "web",
+  action: "search",
+  defaultProvider: "demo",
+  candidates: [{ provider: "demo", inputSchema: { type: "object" }, inputExample: { query: "h402" } }]
+};
+
+function omittedProviderArgs() {
+  const parsed = args();
+  delete parsed.flags.provider;
+  return parsed;
+}
+
 describe("callCommand pending settlement reconciliation", () => {
   let stdout: ReturnType<typeof vi.spyOn>;
 
@@ -125,6 +140,47 @@ describe("callCommand pending settlement reconciliation", () => {
     expect(retry[1].method).toBe(firstPaid[1].method);
     expect(retry[1].body).toBe(firstPaid[1].body);
     expect(stdout).toHaveBeenCalledWith(expect.stringContaining('"ok": true'));
+  });
+
+  it("keeps a catalog-selected provider path through the payable retry", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(res(200, { route: catalogRoute }))
+      .mockResolvedValueOnce(res(402, challenge()))
+      .mockResolvedValueOnce(res(200, { data: { ok: true }, h402: { provider: "demo" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    await callCommand(omittedProviderArgs());
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(String(fetch.mock.calls[0][0])).toBe("https://test.example/api/catalog/routes/web/search");
+    expect(String(fetch.mock.calls[1][0])).toBe("https://test.example/routes/demo/web/search");
+    expect(String(fetch.mock.calls[2][0])).toBe(String(fetch.mock.calls[1][0]));
+    expect(requestHeaders(fetch, 1).get("idempotency-key")).toBe(IDEMPOTENCY_KEY);
+    expect(requestHeaders(fetch, 2).get("idempotency-key")).toBe(IDEMPOTENCY_KEY);
+    expect(requestHeaders(fetch, 2).get("PAYMENT-SIGNATURE")).toBeTruthy();
+    expect(signOwsTypedData).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry or switch providers after a signed 410", async () => {
+    const recovery = {
+      error: { code: "provider_unavailable", message: "Provider changed" },
+      routeId: "web/search",
+      requestedProvider: "demo",
+      defaultProvider: "other",
+      candidates: [{ provider: "other", pinnedPath: "/routes/other/web/search" }]
+    };
+    const fetch = vi.fn().mockResolvedValueOnce(res(402, challenge())).mockResolvedValueOnce(res(410, recovery));
+    vi.stubGlobal("fetch", fetch);
+
+    const error = await callCommand(args()).catch((thrown: unknown) => thrown);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(String(fetch.mock.calls[0][0])).toBe("https://test.example/routes/demo/web/search");
+    expect(String(fetch.mock.calls[1][0])).toBe(String(fetch.mock.calls[0][0]));
+    expect(signOwsTypedData).toHaveBeenCalledTimes(1);
+    expect(error).toMatchObject({ detail: expect.objectContaining({ defaultProvider: "other", candidates: recovery.candidates }) });
+    expect((error as Error).message).toMatch(/do NOT sign or pay with a new idempotency key/i);
   });
 
   it("stops after bounded retries without creating another authorization", async () => {

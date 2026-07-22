@@ -40,39 +40,47 @@ describe("parseArgs", () => {
   });
 
   it("parses --flag=value syntax", () => {
-    expect(parseArgs(["quote", "weather/current", "--query={\"q\":\"Seoul\"}", "--provider=auto"])).toEqual({
+    expect(parseArgs(["quote", "weather/current", "--query={\"q\":\"Seoul\"}", "--provider=weatherkit"])).toEqual({
       positional: ["quote", "weather/current"],
-      flags: { query: '{"q":"Seoul"}', provider: "auto" }
+      flags: { query: '{"q":"Seoul"}', provider: "weatherkit" }
     });
   });
 });
 
 describe("buildProxyPath", () => {
-  it("maps route ids to auto-routed backend paths", () => {
-    expect(buildProxyPath("web/search")).toBe("/routes/auto/web/search");
+  it("requires a concrete provider", () => {
+    expect(() => buildProxyPath("web/search", undefined as unknown as string)).toThrow("Provider is required");
+  });
+
+  it("rejects the tombstoned auto sentinel and non-slug provider segments", () => {
+    expect(() => buildProxyPath("web/search", "auto")).toThrow(/reserved/i);
+    expect(() => buildProxyPath("web/search", ".")).toThrow(/provider.*slug/i);
+    expect(() => buildProxyPath("web/search", "..")).toThrow(/provider.*slug/i);
   });
 
   it("appends primitive query parameters", () => {
-    expect(buildProxyPath("maps/place-details", { placeId: "ChIJ123", includePhotos: false, maxResults: 3 })).toBe(
-      "/routes/auto/maps/place-details?placeId=ChIJ123&includePhotos=false&maxResults=3"
+    expect(buildProxyPath("maps/place-details", "google-maps", { placeId: "ChIJ123", includePhotos: false, maxResults: 3 })).toBe(
+      "/routes/google-maps/maps/place-details?placeId=ChIJ123&includePhotos=false&maxResults=3"
     );
   });
 
   it("pins providers through the path segment", () => {
-    expect(buildProxyPath("web/search", undefined, "stableenrich-exa")).toBe("/routes/stableenrich-exa/web/search");
-    expect(buildProxyPath("web/search", { query: "best AI tools" }, "stableenrich-firecrawl")).toBe(
+    expect(buildProxyPath("web/search", "stableenrich-exa")).toBe("/routes/stableenrich-exa/web/search");
+    expect(buildProxyPath("web/search", "stableenrich-firecrawl", { query: "best AI tools" })).toBe(
       "/routes/stableenrich-firecrawl/web/search?query=best+AI+tools"
     );
   });
 
   it("rejects malformed route ids", () => {
-    expect(() => buildProxyPath("web/search/exa")).toThrow("Route id must look like");
+    expect(() => buildProxyPath("web/search/exa", "stableenrich-exa")).toThrow("Route id must look like");
+    expect(() => buildProxyPath("./search", "stableenrich-exa")).toThrow(/route id segment.*slug/i);
+    expect(() => buildProxyPath("web/..", "stableenrich-exa")).toThrow(/route id segment.*slug/i);
   });
 
   it("rejects array, object, and null query values instead of silently dropping them", () => {
-    expect(() => buildProxyPath("crypto/holders", { ids: [1, 2, 3] })).toThrow(/"ids" must be a string, number, or boolean/);
-    expect(() => buildProxyPath("crypto/holders", { filter: { chain: "base" } })).toThrow(/"filter"/);
-    expect(() => buildProxyPath("crypto/holders", { cursor: null })).toThrow(/"cursor"/);
+    expect(() => buildProxyPath("crypto/holders", "demo", { ids: [1, 2, 3] })).toThrow(/"ids" must be a string, number, or boolean/);
+    expect(() => buildProxyPath("crypto/holders", "demo", { filter: { chain: "base" } })).toThrow(/"filter"/);
+    expect(() => buildProxyPath("crypto/holders", "demo", { cursor: null })).toThrow(/"cursor"/);
   });
 });
 
@@ -97,6 +105,11 @@ describe("parseQueryFlag", () => {
 
   it("suggests JSON object syntax for key=value query input", () => {
     expect(() => parseQueryFlag({ query: "q=Seoul" })).toThrow(/--query must be a JSON object.*key=value syntax is not supported/);
+  });
+
+  it("rejects structured query values during parsing", () => {
+    expect(() => parseQueryFlag({ query: '{"filters":["recent"]}' })).toThrow(/"filters" must be a string, number, or boolean/);
+    expect(() => parseQueryFlag({ query: '{"cursor":null}' })).toThrow(/"cursor"/);
   });
 });
 
