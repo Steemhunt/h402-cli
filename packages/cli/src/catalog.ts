@@ -123,7 +123,7 @@ function parseCatalogRoute(routeId: string, body: unknown): CatalogRoute {
     }
     return candidate as CatalogCandidate;
   });
-  if (!candidates.some((candidate) => candidate.provider === route.defaultProvider)) {
+  if (!candidates.some((candidate) => candidate.provider === route.defaultProvider && candidate.status === "enabled")) {
     return invalidCatalogResponse(routeId, "defaultProvider is not an enabled candidate", {
       defaultProvider: route.defaultProvider,
       candidates: recoveryCandidates({ ...(route as CatalogRoute), candidates })

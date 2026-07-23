@@ -166,6 +166,23 @@ describe("provider-first catalog commands", () => {
     expect(String(fetch.mock.calls[0][0])).toContain("/api/catalog/routes/web/search");
   });
 
+  it("rejects a disabled catalog default before an execution request", async () => {
+    const disabledRoute = {
+      ...route,
+      candidates: route.candidates.map((candidate) =>
+        candidate.provider === route.defaultProvider ? { ...candidate, status: "disabled" } : candidate
+      )
+    };
+    const fetch = vi.fn().mockResolvedValue(res(200, { route: disabledRoute }));
+    vi.stubGlobal("fetch", fetch);
+
+    const error = await callCommand(args("call")).catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(CliError);
+    expect(errorEnvelope(error)).toMatchObject({ error: { detail: { error: { code: "invalid_catalog_response" } } } });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("validates show provider and structured query values before network work", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
