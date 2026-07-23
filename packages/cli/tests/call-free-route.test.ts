@@ -81,7 +81,8 @@ describe("callCommand free routes", () => {
           cliProviderSelection: {
             source: "explicit",
             provider: "stablestudio-image",
-            pinnedCommand: "h402 call ai/image-generate-async-status --provider stablestudio-image"
+            pinnedCommand:
+              "h402 call ai/image-generate-async-status --provider stablestudio-image --api-url https://test.example"
           }
         }
       }

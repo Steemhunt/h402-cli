@@ -143,7 +143,7 @@ describe("callCommand --max-usd", () => {
           cliProviderSelection: {
             source: "explicit",
             provider: "demo",
-            pinnedCommand: "h402 call web/search --provider demo --max-usd 0.049999"
+            pinnedCommand: "h402 call web/search --provider demo --api-url https://test.example --max-usd 0.049999"
           }
         }
       }
@@ -156,7 +156,18 @@ describe("callCommand --max-usd", () => {
     loadConfig.mockResolvedValue(config({ maxUsd: "0.01" }));
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(res(402, challenge("50000"))));
 
-    await expect(callCommand(args())).rejects.toThrow(/exceeds --max-usd 0.01/);
+    const error = await callCommand(args()).catch((thrown: unknown) => thrown);
+
+    expect(error).toMatchObject({
+      message: expect.stringMatching(/exceeds --max-usd 0.01/),
+      detail: {
+        h402: {
+          cliProviderSelection: {
+            pinnedCommand: "h402 call web/search --provider demo --api-url https://test.example --max-usd 0.01"
+          }
+        }
+      }
+    });
   });
 
   it("lets --max-usd override config.maxUsd", async () => {

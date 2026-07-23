@@ -142,15 +142,21 @@ export async function resolveProvider(
   routeId: string,
   explicitProvider: string | undefined,
   command: "call" | "quote",
-  flags: ParsedArgs["flags"]
+  flags: ParsedArgs["flags"],
+  effectiveMaxUsd?: string
 ): Promise<{ selection: ProviderSelection; route?: CatalogRoute }> {
+  const effectiveFlags = {
+    ...flags,
+    "api-url": apiUrl,
+    ...(effectiveMaxUsd === undefined ? {} : { "max-usd": effectiveMaxUsd })
+  };
   if (explicitProvider !== undefined) {
-    return { selection: selection(command, routeId, assertConcreteProvider(explicitProvider), "explicit", flags) };
+    return { selection: selection(command, routeId, assertConcreteProvider(explicitProvider), "explicit", effectiveFlags) };
   }
   const { route } = await fetchCatalogRoute(apiUrl, routeId);
   return {
     route,
-    selection: selection(command, routeId, route.defaultProvider, "catalog-default", flags)
+    selection: selection(command, routeId, route.defaultProvider, "catalog-default", effectiveFlags)
   };
 }
 
@@ -172,8 +178,8 @@ export function selectCatalogCandidate(route: CatalogRoute, provider: string) {
   });
 }
 
-export function explicitShowSelection(routeId: string, provider: string, flags: ParsedArgs["flags"]) {
-  return selection("show", routeId, provider, "explicit", flags);
+export function explicitShowSelection(apiUrl: string, routeId: string, provider: string, flags: ParsedArgs["flags"]) {
+  return selection("show", routeId, provider, "explicit", { ...flags, "api-url": apiUrl });
 }
 
 export function withProviderSelection(body: unknown, providerSelection: ProviderSelection) {

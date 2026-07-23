@@ -3,10 +3,10 @@ import { CliError, errorEnvelope } from "../src/errors";
 import type { ParsedArgs } from "../src/utils";
 
 const { loadConfig } = vi.hoisted(() => ({ loadConfig: vi.fn() }));
-vi.mock("../src/config.js", () => ({
+vi.mock("../src/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/config.js")>()),
   loadConfig,
-  updateConfig: vi.fn(),
-  backendUrl: () => "https://test.example"
+  updateConfig: vi.fn()
 }));
 vi.mock("../src/ows.js", () => ({
   createOwsWallet: vi.fn(),
@@ -82,6 +82,7 @@ describe("provider-first catalog commands", () => {
   afterEach(() => {
     stdout.mockRestore();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     loadConfig.mockReset();
   });
 
@@ -104,8 +105,8 @@ describe("provider-first catalog commands", () => {
       })
     );
 
-    expect(String(fetch.mock.calls[0][0])).toBe("https://test.example/api/catalog/routes/web/search");
-    expect(String(fetch.mock.calls[1][0])).toBe("https://test.example/routes/stableenrich-exa/web/search");
+    expect(String(fetch.mock.calls[0][0])).toBe("https://custom.example/v1/api/catalog/routes/web/search");
+    expect(String(fetch.mock.calls[1][0])).toBe("https://custom.example/v1/routes/stableenrich-exa/web/search");
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(printed(stdout).h402.cliProviderSelection).toEqual({
       source: "catalog-default",
@@ -135,6 +136,22 @@ describe("provider-first catalog commands", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(String(fetch.mock.calls[0][0])).toBe("https://test.example/routes/blockrun-grok/web/search");
     expect(String(fetch.mock.calls[0][0])).not.toContain("/routes/auto/");
+    expect(printed(stdout).h402.cliProviderSelection.pinnedCommand).toBe(
+      "h402 call web/search --provider blockrun-grok --api-url https://test.example --json '{\"query\":\"h402\"}'"
+    );
+  });
+
+  it("pins an environment-derived backend in the reproducible command", async () => {
+    vi.stubEnv("H402_API_URL", "https://env.example/");
+    const fetch = vi.fn().mockResolvedValue(res(200, { data: { ok: true }, h402: { provider: "blockrun-grok" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    await callCommand(args("call", { provider: "blockrun-grok" }));
+
+    expect(String(fetch.mock.calls[0][0])).toBe("https://env.example/routes/blockrun-grok/web/search");
+    expect(printed(stdout).h402.cliProviderSelection.pinnedCommand).toBe(
+      "h402 call web/search --provider blockrun-grok --api-url https://env.example"
+    );
   });
 
   it("rejects the auto sentinel locally for call, quote, and show", async () => {
@@ -252,7 +269,8 @@ describe("provider-first catalog commands", () => {
             cliProviderSelection: {
               source: "catalog-default",
               provider: "stableenrich-exa",
-              pinnedCommand: "h402 call web/search --provider stableenrich-exa --json '{\"query\":\"h402\"}'"
+              pinnedCommand:
+                "h402 call web/search --provider stableenrich-exa --api-url https://test.example --json '{\"query\":\"h402\"}'"
             }
           }
         }
@@ -308,7 +326,11 @@ describe("provider-first catalog commands", () => {
         flowFollowUps: ["web/search-status"]
       },
       candidate: { provider: "blockrun-grok", sampleOutput: { output: "native" } },
-      providerSelection: { source: "explicit", provider: "blockrun-grok" }
+      providerSelection: {
+        source: "explicit",
+        provider: "blockrun-grok",
+        pinnedCommand: "h402 show web/search --provider blockrun-grok --api-url https://test.example"
+      }
     });
     expect(printed(stdout).route).not.toHaveProperty("provider");
     expect(printed(stdout).route).not.toHaveProperty("inputSchema");
@@ -373,7 +395,8 @@ describe("provider-first catalog commands", () => {
             cliProviderSelection: {
               source: "catalog-default",
               provider: "stableenrich-exa",
-              pinnedCommand: "h402 quote web/search --provider stableenrich-exa --json '{\"query\":\"h402\"}'"
+              pinnedCommand:
+                "h402 quote web/search --provider stableenrich-exa --api-url https://test.example --json '{\"query\":\"h402\"}'"
             }
           }
         }

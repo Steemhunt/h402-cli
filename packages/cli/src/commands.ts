@@ -381,7 +381,7 @@ export async function showCommand(args: ParsedArgs) {
   await printJson({
     route: routeSummary,
     candidate,
-    providerSelection: explicitShowSelection(routeId, provider, args.flags)
+    providerSelection: explicitShowSelection(apiUrl, routeId, provider, args.flags)
   });
 }
 
@@ -561,7 +561,7 @@ export async function callCommand(args: ParsedArgs) {
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const paymentCap = maxUsd(args, config);
   const token = config.sessions[apiUrl];
-  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "call", args.flags);
+  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "call", args.flags, paymentCap?.raw);
 
   let signedRequestSent = false;
   try {

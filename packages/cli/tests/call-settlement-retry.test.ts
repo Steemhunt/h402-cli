@@ -189,7 +189,7 @@ describe("callCommand pending settlement reconciliation", () => {
           cliProviderSelection: {
             source: "explicit",
             provider: "demo",
-            pinnedCommand: "h402 call web/search --provider demo --json '{\"query\":\"h402\"}'"
+            pinnedCommand: "h402 call web/search --provider demo --api-url https://test.example --json '{\"query\":\"h402\"}'"
           }
         }
       })
