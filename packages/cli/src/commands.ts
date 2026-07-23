@@ -6,7 +6,8 @@ import {
   fetchCatalogRoute,
   resolveProvider,
   selectCatalogCandidate,
-  withProviderSelection
+  withProviderSelection,
+  withProviderSelectionError
 } from "./catalog.js";
 import { backendUrl, loadConfig, updateConfig, type CliConfig } from "./config.js";
 import { CliError } from "./errors.js";
@@ -373,12 +374,14 @@ export async function showCommand(args: ParsedArgs) {
     tags: route.tags,
     defaultProvider: route.defaultProvider,
     defaultCandidateKey: route.defaultCandidateKey,
-    stats: route.stats
+    stats: route.stats,
+    flow: route.flow,
+    flowFollowUps: route.flowFollowUps
   };
   await printJson({
     route: routeSummary,
     candidate,
-    providerSelection: explicitShowSelection(routeId, provider)
+    providerSelection: explicitShowSelection(routeId, provider, args.flags)
   });
 }
 
@@ -405,19 +408,23 @@ export async function quoteCommand(args: ParsedArgs) {
   rejectQueryOnPost(method, query);
   const config = await loadConfig();
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
-  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "quote");
-  const result = await requestJson(apiUrl, buildProxyPath(routeId, providerSelection.provider, query), {
-    method,
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-  const paymentRequired = paymentRequiredFromResponse(result.headers, result.body);
-  if (paymentRequired) {
-    await printJson({ providerSelection, paymentRequired });
-    return;
+  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "quote", args.flags);
+  try {
+    const result = await requestJson(apiUrl, buildProxyPath(routeId, providerSelection.provider, query), {
+      method,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const paymentRequired = paymentRequiredFromResponse(result.headers, result.body);
+    if (paymentRequired) {
+      await printJson(withProviderSelection({ paymentRequired }, providerSelection));
+      return;
+    }
+    // No challenge: a free route returns its result with a 2xx. Any non-2xx
+    // (404/410/500/...) is a real error and must exit non-zero, not print as a result.
+    await printJson(withProviderSelection(assertOk(result), providerSelection));
+  } catch (error) {
+    throw withProviderSelectionError(error, providerSelection);
   }
-  // No challenge: a free route returns its result with a 2xx. Any non-2xx
-  // (404/410/500/...) is a real error and must exit non-zero, not print as a result.
-  await printJson(withProviderSelection(assertOk(result), providerSelection));
 }
 
 function parseUsdMicros(raw: string, source: string) {
@@ -554,19 +561,20 @@ export async function callCommand(args: ParsedArgs) {
   const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const paymentCap = maxUsd(args, config);
   const token = config.sessions[apiUrl];
-  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "call");
-  const path = buildProxyPath(routeId, providerSelection.provider, query);
-  const requestBody = body === undefined ? undefined : JSON.stringify(body);
-  const headers: Record<string, string> = {
-    "idempotency-key": idempotencyKey
-  };
-
-  if (token && !flagBoolean(args.flags, "no-credit")) {
-    headers.authorization = `Bearer ${token}`;
-  }
+  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "call", args.flags);
 
   let signedRequestSent = false;
   try {
+    const path = buildProxyPath(routeId, providerSelection.provider, query);
+    const requestBody = body === undefined ? undefined : JSON.stringify(body);
+    const headers: Record<string, string> = {
+      "idempotency-key": idempotencyKey
+    };
+
+    if (token && !flagBoolean(args.flags, "no-credit")) {
+      headers.authorization = `Bearer ${token}`;
+    }
+
     const first = await requestJson<unknown>(apiUrl, path, {
       method,
       headers,
@@ -623,6 +631,6 @@ export async function callCommand(args: ParsedArgs) {
     const settlementRiskIsUnresolved =
       (signedRequestSent || isPaymentSettlementFailure(error)) && !isConclusiveSettlementFailure(error, idempotencyKey);
     const guardedError = settlementRiskIsUnresolved ? withSettlementRiskGuidance(error) : error;
-    throw withIdempotencyKey(guardedError, idempotencyKey);
+    throw withProviderSelectionError(withIdempotencyKey(guardedError, idempotencyKey), providerSelection);
   }
 }

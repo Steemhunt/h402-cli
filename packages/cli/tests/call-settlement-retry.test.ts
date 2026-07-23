@@ -164,11 +164,14 @@ describe("callCommand pending settlement reconciliation", () => {
 
   it("does not retry or switch providers after a signed 410", async () => {
     const recovery = {
-      error: { code: "provider_unavailable", message: "Provider changed" },
-      routeId: "web/search",
-      requestedProvider: "demo",
-      defaultProvider: "other",
-      candidates: [{ provider: "other", pinnedPath: "/routes/other/web/search" }]
+      error: {
+        code: "provider_unavailable",
+        message: "Provider changed",
+        routeId: "web/search",
+        requestedProvider: "demo",
+        defaultProvider: "other",
+        candidates: [{ provider: "other", candidateKey: "search:other", status: "enabled", path: "/routes/other/web/search" }]
+      }
     };
     const fetch = vi.fn().mockResolvedValueOnce(res(402, challenge())).mockResolvedValueOnce(res(410, recovery));
     vi.stubGlobal("fetch", fetch);
@@ -179,7 +182,18 @@ describe("callCommand pending settlement reconciliation", () => {
     expect(String(fetch.mock.calls[0][0])).toBe("https://test.example/routes/demo/web/search");
     expect(String(fetch.mock.calls[1][0])).toBe(String(fetch.mock.calls[0][0]));
     expect(signOwsTypedData).toHaveBeenCalledTimes(1);
-    expect(error).toMatchObject({ detail: expect.objectContaining({ defaultProvider: "other", candidates: recovery.candidates }) });
+    expect(error).toMatchObject({
+      detail: expect.objectContaining({
+        error: recovery.error,
+        h402: {
+          cliProviderSelection: {
+            source: "explicit",
+            provider: "demo",
+            pinnedCommand: "h402 call web/search --provider demo --json '{\"query\":\"h402\"}'"
+          }
+        }
+      })
+    });
     expect((error as Error).message).toMatch(/do NOT sign or pay with a new idempotency key/i);
   });
 

@@ -72,7 +72,20 @@ describe("callCommand free routes", () => {
     const fetch = vi.fn(async () => res(402, challenge));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(callCommand(args())).rejects.toThrow(/No address known for wallet "h402"/);
+    const error = await callCommand(args()).catch((thrown: unknown) => thrown);
+
+    expect(error).toMatchObject({
+      message: expect.stringMatching(/No address known for wallet "h402"/),
+      detail: {
+        h402: {
+          cliProviderSelection: {
+            source: "explicit",
+            provider: "stablestudio-image",
+            pinnedCommand: "h402 call ai/image-generate-async-status --provider stablestudio-image"
+          }
+        }
+      }
+    });
     expect(fetch).toHaveBeenCalled();
   });
 });

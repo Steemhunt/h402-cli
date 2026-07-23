@@ -78,7 +78,7 @@ Route ids are `category/action`, e.g. `web/search`, `maps/place-details`, `finan
 
 ## How a call works
 
-Each call uses one concrete provider. Without `--provider`, the CLI resolves the route's current `defaultProvider` from `/api/catalog/routes/<route>` before any execution request; explicit `--provider` goes straight to that pinned path. Every success includes `h402.cliProviderSelection` with the source, provider, and reproducible pinned command. A `410` response is never retried automatically — inspect its machine-readable alternatives with `h402 show`, then start a new explicit call.
+Each call uses one concrete provider. Without `--provider`, the CLI resolves the route's current `defaultProvider` from `/api/catalog/routes/<route>` before any execution request; explicit `--provider` goes straight to that pinned path. Successes include `h402.cliProviderSelection`, and post-resolution failures include the same metadata at `error.detail.h402.cliProviderSelection`. Its `pinnedCommand` is a shell-escaped fresh-call recipe that preserves non-secret request, backend, wallet, and payment-safety flags and omits passphrases and the previous idempotency key. A `410` response is never retried automatically — inspect `error.detail.error.candidates` with `h402 show`, then start a new explicit call. Unknown routes preserve the server's `error.detail.error.recovery.command` search guidance.
 
 ```
 h402 call web/search --json '{"query":"..."}'
@@ -114,7 +114,7 @@ confirms that the original authorization was not paid.
 
 Every command prints JSON to stdout — `search`, `show`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
 
-A successful `call` is wrapped as `{ "data": <provider-native body>, "h402": <execution metadata> }` — `data` remains provider-native, and `h402` includes the provider-pinned execution receipt plus CLI-added `cliProviderSelection`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `h402.followUp` describes async work. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr; `detail` preserves machine-readable route/provider alternatives.
+A successful `call` is wrapped as `{ "data": <provider-native body>, "meta"?: <reserved envelope metadata>, "h402": <execution metadata> }` — `data` remains provider-native, optional `meta` remains reserved envelope metadata rather than normalized provider output, and `h402` includes the provider-pinned execution receipt plus CLI-added `cliProviderSelection`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `h402.followUp` describes async work. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr; `detail` preserves the backend recovery body unchanged.
 
 Async routes may return a job receipt instead of the final result. Async parent route IDs end in `-async`; a single-parent follow-up is `<parent-route>-status`, while shared multi-parent follow-ups may use a shared `*-status` name. When `h402.followUp` is present, pass its provider-native `params` object according to `method` and preserve the provider segment from `path`. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
 

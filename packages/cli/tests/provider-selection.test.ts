@@ -32,8 +32,11 @@ const route = {
   price: { mode: "fixed", amountUsd: 0.01 },
   defaultProvider: "stableenrich-exa",
   defaultCandidateKey: "web/search:stableenrich-exa",
+  flow: { parent: "web/research-task" },
+  flowFollowUps: ["web/search-status"],
   candidates: [
     {
+      candidateKey: "search:stableenrich-exa",
       provider: "stableenrich-exa",
       method: "POST",
       status: "enabled",
@@ -43,6 +46,7 @@ const route = {
       sampleOutput: { results: [{ title: "h402" }] }
     },
     {
+      candidateKey: "search:blockrun-grok",
       provider: "blockrun-grok",
       method: "POST",
       status: "enabled",
@@ -85,7 +89,20 @@ describe("provider-first catalog commands", () => {
     const fetch = vi.fn().mockResolvedValueOnce(res(200, { route })).mockResolvedValueOnce(res(200, { data: { ok: true }, h402: { provider: "stableenrich-exa" } }));
     vi.stubGlobal("fetch", fetch);
 
-    await callCommand(args("call", { json: '{"query":"h402"}', "idempotency-key": "idem-1" }));
+    await callCommand(
+      args("call", {
+        "api-url": "https://custom.example/v1",
+        json: `{"query":"O'Reilly AI"}`,
+        method: "POST",
+        name: "agent wallet",
+        wallet: "0x1111111111111111111111111111111111111111",
+        passphrase: "never-print-this",
+        "no-passphrase": true,
+        "no-credit": true,
+        "max-usd": "0.05",
+        "idempotency-key": "idem-1"
+      })
+    );
 
     expect(String(fetch.mock.calls[0][0])).toBe("https://test.example/api/catalog/routes/web/search");
     expect(String(fetch.mock.calls[1][0])).toBe("https://test.example/routes/stableenrich-exa/web/search");
@@ -93,8 +110,11 @@ describe("provider-first catalog commands", () => {
     expect(printed(stdout).h402.cliProviderSelection).toEqual({
       source: "catalog-default",
       provider: "stableenrich-exa",
-      pinnedCommand: "h402 call web/search --provider stableenrich-exa"
+      pinnedCommand:
+        "h402 call web/search --provider stableenrich-exa --api-url https://custom.example/v1 --json '{\"query\":\"O'\\''Reilly AI\"}' --method POST --name 'agent wallet' --wallet 0x1111111111111111111111111111111111111111 --no-passphrase --no-credit --max-usd 0.05"
     });
+    expect(printed(stdout).h402.cliProviderSelection.pinnedCommand).not.toContain("never-print-this");
+    expect(printed(stdout).h402.cliProviderSelection.pinnedCommand).not.toContain("idem-1");
   });
 
   it("validates the payment cap before resolving an omitted provider", async () => {
@@ -157,29 +177,49 @@ describe("provider-first catalog commands", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("prints the default provider with a quote challenge", async () => {
+  it("prints a reproducible GET query and the default provider with a quote challenge", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(res(200, { route })).mockResolvedValueOnce(res(402, challenge));
     vi.stubGlobal("fetch", fetch);
 
-    await quoteCommand(args("quote", { json: '{"query":"h402"}' }));
+    await quoteCommand(
+      args("quote", {
+        "api-url": "https://custom.example/v1",
+        query: '{"q":"agent APIs","limit":3}',
+        method: "GET"
+      })
+    );
 
     expect(printed(stdout)).toMatchObject({
-      providerSelection: {
-        source: "catalog-default",
-        provider: "stableenrich-exa",
-        pinnedCommand: "h402 quote web/search --provider stableenrich-exa"
+      h402: {
+        cliProviderSelection: {
+          source: "catalog-default",
+          provider: "stableenrich-exa",
+          pinnedCommand:
+            "h402 quote web/search --provider stableenrich-exa --api-url https://custom.example/v1 --query '{\"q\":\"agent APIs\",\"limit\":3}' --method GET"
+        }
       },
       paymentRequired: challenge
     });
+    expect(String(fetch.mock.calls[1][0])).toContain("/routes/stableenrich-exa/web/search?q=agent+APIs&limit=3");
   });
 
-  it("stops on 410 with machine-readable alternatives and never retries", async () => {
+  it("stops on 410 with machine-readable candidates and never retries", async () => {
     const recovery = {
-      error: { code: "provider_unavailable", message: "Provider changed" },
-      routeId: "web/search",
-      requestedProvider: "stableenrich-exa",
-      defaultProvider: "blockrun-grok",
-      candidates: [{ provider: "blockrun-grok", status: "enabled", pinnedPath: "/routes/blockrun-grok/web/search" }]
+      error: {
+        code: "provider_unavailable",
+        message: "Provider changed",
+        routeId: "web/search",
+        requestedProvider: "stableenrich-exa",
+        defaultProvider: "blockrun-grok",
+        candidates: [
+          {
+            provider: "blockrun-grok",
+            candidateKey: "search:blockrun-grok",
+            status: "enabled",
+            path: "/routes/blockrun-grok/web/search"
+          }
+        ]
+      }
     };
     const fetch = vi.fn().mockResolvedValueOnce(res(200, { route })).mockResolvedValueOnce(res(410, recovery));
     vi.stubGlobal("fetch", fetch);
@@ -187,16 +227,32 @@ describe("provider-first catalog commands", () => {
     const error = await callCommand(args("call", { json: '{"query":"h402"}', "idempotency-key": "idem-410" })).catch((thrown: unknown) => thrown);
 
     expect(error).toBeInstanceOf(CliError);
-    expect(errorEnvelope(error)).toMatchObject({ error: { detail: { defaultProvider: "blockrun-grok", candidates: recovery.candidates } } });
+    expect(errorEnvelope(error)).toMatchObject({
+      error: {
+        detail: {
+          error: recovery.error,
+          h402: {
+            cliProviderSelection: {
+              source: "catalog-default",
+              provider: "stableenrich-exa",
+              pinnedCommand: "h402 call web/search --provider stableenrich-exa --json '{\"query\":\"h402\"}'"
+            }
+          }
+        }
+      }
+    });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls.some((call) => String(call[0]).includes("/routes/auto/"))).toBe(false);
   });
 
-  it("preserves machine-readable route suggestions when default resolution fails", async () => {
+  it("preserves the exact unknown-route search recovery when default resolution fails", async () => {
     const missing = {
-      error: { code: "route_not_found", message: "Unknown route" },
-      routeId: "web/search",
-      suggestions: [{ routeId: "web/answer" }]
+      error: {
+        code: "route_not_found",
+        message: "Route not found",
+        routeId: "web/search",
+        recovery: { command: 'h402 search "web/search"' }
+      }
     };
     const fetch = vi.fn().mockResolvedValue(res(404, missing));
     vi.stubGlobal("fetch", fetch);
@@ -204,7 +260,8 @@ describe("provider-first catalog commands", () => {
     const error = await callCommand(args("call", { json: '{"query":"h402"}' })).catch((thrown: unknown) => thrown);
 
     expect(error).toBeInstanceOf(CliError);
-    expect(errorEnvelope(error)).toMatchObject({ error: { detail: { suggestions: missing.suggestions } } });
+    expect(errorEnvelope(error)).toMatchObject({ error: { detail: { error: missing.error } } });
+    expect(JSON.stringify(errorEnvelope(error))).not.toContain("suggestions");
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -226,7 +283,13 @@ describe("provider-first catalog commands", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(printed(stdout)).toMatchObject({
-      route: { id: "web/search", routeKey: "search", defaultProvider: "stableenrich-exa" },
+      route: {
+        id: "web/search",
+        routeKey: "search",
+        defaultProvider: "stableenrich-exa",
+        flow: { parent: "web/research-task" },
+        flowFollowUps: ["web/search-status"]
+      },
       candidate: { provider: "blockrun-grok", sampleOutput: { output: "native" } },
       providerSelection: { source: "explicit", provider: "blockrun-grok" }
     });
@@ -237,7 +300,7 @@ describe("provider-first catalog commands", () => {
     expect(printed(stdout).route).not.toHaveProperty("candidates");
   });
 
-  it("returns machine-readable alternatives for an unknown show provider", async () => {
+  it("returns machine-readable candidates for an unknown show provider", async () => {
     const fetch = vi.fn().mockResolvedValue(res(200, { route }));
     vi.stubGlobal("fetch", fetch);
 
@@ -245,13 +308,59 @@ describe("provider-first catalog commands", () => {
 
     expect(error).toBeInstanceOf(CliError);
     expect(errorEnvelope(error)).toMatchObject({
-      error: { detail: { error: { code: "unknown_provider" }, routeId: "web/search", defaultProvider: "stableenrich-exa" } }
+      error: {
+        detail: {
+          error: {
+            code: "provider_unavailable",
+            routeId: "web/search",
+            requestedProvider: "missing",
+            defaultProvider: "stableenrich-exa"
+          }
+        }
+      }
     });
     expect((error as CliError).detail).toMatchObject({
-      alternatives: [
-        { provider: "stableenrich-exa", pinnedPath: "/routes/stableenrich-exa/web/search" },
-        { provider: "blockrun-grok", pinnedPath: "/routes/blockrun-grok/web/search" }
-      ]
+      error: {
+        candidates: [
+          {
+            provider: "stableenrich-exa",
+            candidateKey: "search:stableenrich-exa",
+            status: "enabled",
+            path: "/routes/stableenrich-exa/web/search"
+          },
+          {
+            provider: "blockrun-grok",
+            candidateKey: "search:blockrun-grok",
+            status: "enabled",
+            path: "/routes/blockrun-grok/web/search"
+          }
+        ]
+      }
+    });
+  });
+
+  it("attaches provider selection to quote errors after resolution", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(res(200, { route }))
+      .mockResolvedValueOnce(res(500, { error: { code: "upstream_failed", message: "Provider failed" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    const error = await quoteCommand(args("quote", { json: '{"query":"h402"}' })).catch((thrown: unknown) => thrown);
+
+    expect(errorEnvelope(error)).toMatchObject({
+      error: {
+        detail: {
+          error: { code: "upstream_failed" },
+          h402: {
+            cliProviderSelection: {
+              source: "catalog-default",
+              provider: "stableenrich-exa",
+              pinnedCommand: "h402 quote web/search --provider stableenrich-exa --json '{\"query\":\"h402\"}'"
+            }
+          }
+        }
+      }
     });
   });
 

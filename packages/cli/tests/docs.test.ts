@@ -23,11 +23,13 @@ describe("doc examples stay runnable against the provider-pinned catalog contrac
 
     it(`${label}: documents provider-native output and explicit CLI selection metadata`, () => {
       const text = readFileSync(file, "utf8");
-      expect(text).toContain('{ "data": <provider-native body>, "h402": <execution metadata> }');
+      expect(text).toContain(
+        '{ "data": <provider-native body>, "meta"?: <reserved envelope metadata>, "h402": <execution metadata> }'
+      );
+      expect(text).toContain("reserved envelope metadata rather than normalized provider output");
       expect(text).toContain("h402.cliProviderSelection");
       expect(text).toContain("paymentTransaction");
       expect(text).toContain("h402.followUp");
-      expect(text).not.toContain('"meta"?: <contract metadata>');
       expect(text).not.toMatch(/params\.jobId/);
     });
   }
@@ -112,6 +114,11 @@ describe("doc examples stay runnable against the provider-pinned catalog contrac
       expect(text).toContain("Each call uses one concrete provider.");
       expect(text).toContain("Without `--provider`, the CLI resolves the route's current `defaultProvider`");
       expect(text).toContain("A `410` response is never retried automatically");
+      expect(text).toContain("error.detail.error.candidates");
+      expect(text).toContain("error.detail.error.recovery.command");
+      expect(text).toContain("post-resolution failures");
+      expect(text).toContain("fresh-call recipe");
+      expect(text).toContain("omits passphrases and the previous idempotency key");
       expect(text).toContain(asyncRouteConvention);
       expect(text).toContain("h402 call <followUp.routeId>");
       expect(text).toContain("--provider <provider-from-followUp.path>");

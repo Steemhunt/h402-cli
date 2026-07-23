@@ -134,7 +134,20 @@ describe("callCommand --max-usd", () => {
     const fetch = vi.fn().mockResolvedValueOnce(res(402, challenge("50000")));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(callCommand(args({ "max-usd": "0.049999" }))).rejects.toThrow(/exceeds --max-usd 0.049999/);
+    const error = await callCommand(args({ "max-usd": "0.049999" })).catch((thrown: unknown) => thrown);
+
+    expect(error).toMatchObject({
+      message: expect.stringMatching(/exceeds --max-usd 0.049999/),
+      detail: {
+        h402: {
+          cliProviderSelection: {
+            source: "explicit",
+            provider: "demo",
+            pinnedCommand: "h402 call web/search --provider demo --max-usd 0.049999"
+          }
+        }
+      }
+    });
     expect(signOwsTypedData).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledTimes(1);
   });

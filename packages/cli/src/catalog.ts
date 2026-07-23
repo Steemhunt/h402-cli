@@ -1,6 +1,6 @@
 import { assertOk, requestJson } from "./api.js";
 import { CliError } from "./errors.js";
-import { assertConcreteProvider, encodeRouteId } from "./utils.js";
+import { assertConcreteProvider, encodeRouteId, type ParsedArgs } from "./utils.js";
 
 export type ProviderSelection = {
   source: "explicit" | "catalog-default";
@@ -23,6 +23,15 @@ export type CatalogRoute = {
 };
 
 type CatalogRouteEnvelope = { route: CatalogRoute };
+type SelectionCommand = "call" | "quote" | "show";
+
+const PINNED_COMMAND_FLAGS: Record<SelectionCommand, readonly string[]> = {
+  call: ["api-url", "json", "query", "method", "name", "wallet", "no-passphrase", "no-credit", "max-usd"],
+  quote: ["api-url", "json", "query", "method"],
+  show: ["api-url"]
+};
+
+const BOOLEAN_PINNED_COMMAND_FLAGS = new Set(["no-passphrase", "no-credit"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -32,19 +41,41 @@ function shellArg(value: string) {
   return /^[A-Za-z0-9_./:@+-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-function selection(command: "call" | "quote" | "show", routeId: string, provider: string, source: ProviderSelection["source"]): ProviderSelection {
+function pinnedCommand(command: SelectionCommand, routeId: string, provider: string, flags: ParsedArgs["flags"]) {
+  const parts = ["h402", command, shellArg(routeId), "--provider", shellArg(provider)];
+  for (const name of PINNED_COMMAND_FLAGS[command]) {
+    const value = flags[name];
+    if (value === undefined) continue;
+    if (BOOLEAN_PINNED_COMMAND_FLAGS.has(name)) {
+      if (value === true || value === "true") parts.push(`--${name}`);
+      continue;
+    }
+    if (typeof value === "string") parts.push(`--${name}`, shellArg(value));
+  }
+  return parts.join(" ");
+}
+
+function selection(
+  command: SelectionCommand,
+  routeId: string,
+  provider: string,
+  source: ProviderSelection["source"],
+  flags: ParsedArgs["flags"]
+): ProviderSelection {
   return {
     source,
     provider,
-    pinnedCommand: `h402 ${command} ${shellArg(routeId)} --provider ${shellArg(provider)}`
+    pinnedCommand: pinnedCommand(command, routeId, provider, flags)
   };
 }
 
-function alternatives(route: CatalogRoute) {
+function recoveryCandidates(route: CatalogRoute) {
   const encodedRoute = encodeRouteId(route.id);
-  return route.candidates.map(({ provider }) => ({
-    provider,
-    pinnedPath: `/routes/${encodeURIComponent(provider)}/${encodedRoute}`
+  return route.candidates.map((candidate) => ({
+    provider: candidate.provider,
+    ...(typeof candidate.candidateKey === "string" ? { candidateKey: candidate.candidateKey } : {}),
+    ...(typeof candidate.status === "string" ? { status: candidate.status } : {}),
+    path: `/routes/${encodeURIComponent(candidate.provider)}/${encodedRoute}`
   }));
 }
 
@@ -95,10 +126,7 @@ function parseCatalogRoute(routeId: string, body: unknown): CatalogRoute {
   if (!candidates.some((candidate) => candidate.provider === route.defaultProvider)) {
     return invalidCatalogResponse(routeId, "defaultProvider is not an enabled candidate", {
       defaultProvider: route.defaultProvider,
-      alternatives: candidates.map(({ provider }) => ({
-        provider,
-        pinnedPath: `/routes/${encodeURIComponent(provider)}/${encodeRouteId(routeId)}`
-      }))
+      candidates: recoveryCandidates({ ...(route as CatalogRoute), candidates })
     });
   }
   return { ...(route as CatalogRoute), candidates };
@@ -113,15 +141,16 @@ export async function resolveProvider(
   apiUrl: string,
   routeId: string,
   explicitProvider: string | undefined,
-  command: "call" | "quote"
+  command: "call" | "quote",
+  flags: ParsedArgs["flags"]
 ): Promise<{ selection: ProviderSelection; route?: CatalogRoute }> {
   if (explicitProvider !== undefined) {
-    return { selection: selection(command, routeId, assertConcreteProvider(explicitProvider), "explicit") };
+    return { selection: selection(command, routeId, assertConcreteProvider(explicitProvider), "explicit", flags) };
   }
   const { route } = await fetchCatalogRoute(apiUrl, routeId);
   return {
     route,
-    selection: selection(command, routeId, route.defaultProvider, "catalog-default")
+    selection: selection(command, routeId, route.defaultProvider, "catalog-default", flags)
   };
 }
 
@@ -132,16 +161,19 @@ export function selectCatalogCandidate(route: CatalogRoute, provider: string) {
   }
   const message = `Provider "${provider}" is not enabled for ${route.id}.`;
   throw new CliError(message, {
-    error: { code: "unknown_provider", message },
-    routeId: route.id,
-    requestedProvider: provider,
-    defaultProvider: route.defaultProvider,
-    alternatives: alternatives(route)
+    error: {
+      code: "provider_unavailable",
+      message,
+      routeId: route.id,
+      requestedProvider: provider,
+      defaultProvider: route.defaultProvider,
+      candidates: recoveryCandidates(route)
+    }
   });
 }
 
-export function explicitShowSelection(routeId: string, provider: string) {
-  return selection("show", routeId, provider, "explicit");
+export function explicitShowSelection(routeId: string, provider: string, flags: ParsedArgs["flags"]) {
+  return selection("show", routeId, provider, "explicit", flags);
 }
 
 export function withProviderSelection(body: unknown, providerSelection: ProviderSelection) {
@@ -150,4 +182,13 @@ export function withProviderSelection(body: unknown, providerSelection: Provider
     return { ...body, h402: { ...h402, cliProviderSelection: providerSelection } };
   }
   return { data: body, h402: { cliProviderSelection: providerSelection } };
+}
+
+export function withProviderSelectionError(error: unknown, providerSelection: ProviderSelection) {
+  const existingDetail = error instanceof CliError && isRecord(error.detail) ? error.detail : {};
+  const h402 = isRecord(existingDetail.h402) ? existingDetail.h402 : {};
+  return new CliError(error instanceof Error ? error.message : String(error), {
+    ...existingDetail,
+    h402: { ...h402, cliProviderSelection: providerSelection }
+  });
 }
