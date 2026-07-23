@@ -21,7 +21,7 @@ function stubFetch(status: number, body: unknown, headers: Record<string, string
 }
 
 function args(routeId: string, flags: ParsedArgs["flags"] = {}, ...extra: string[]): ParsedArgs {
-  return { positional: ["cmd", routeId, ...extra], flags };
+  return { positional: ["cmd", routeId, ...extra], flags: { provider: "demo", ...flags } };
 }
 
 const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", asset: "0x", amount: "1", payTo: "0x", maxTimeoutSeconds: 60 }] };
@@ -109,7 +109,7 @@ describe("quote/call exit codes on backend responses", () => {
         detail: {
           idempotencyKey: "idem-123",
           backendUrl: "https://test.example",
-          url: "https://test.example/routes/auto/web/search",
+          url: "https://test.example/routes/demo/web/search",
           ...backend
         }
       }

@@ -23,7 +23,7 @@ describe("requestJson", () => {
     });
     vi.stubGlobal("fetch", fetch);
 
-    await expect(requestJson("https://api.example", "/routes/auto/web/search")).resolves.toMatchObject({ status: 200, body: { ok: true } });
+    await expect(requestJson("https://api.example", "/routes/demo/web/search")).resolves.toMatchObject({ status: 200, body: { ok: true } });
 
     expect(H402_HTTP_TIMEOUT_MS).toBeGreaterThanOrEqual(450_000);
     const init = fetch.mock.calls[0]?.[1] as { dispatcher?: unknown; headers?: HeadersInit } | undefined;
@@ -71,7 +71,7 @@ describe("requestJson", () => {
       vi.fn(async () => response(500, { error: { message: "boom" } }))
     );
 
-    const result = await requestJson("https://staging.example", "/routes/auto/web/search");
+    const result = await requestJson("https://staging.example", "/routes/demo/web/search");
     const error = (() => {
       try {
         assertOk(result);
@@ -83,7 +83,7 @@ describe("requestJson", () => {
     expect(error).toBeInstanceOf(CliError);
     expect(error).toMatchObject({
       message: "Request failed: 500 Error: boom",
-      detail: { backendUrl: "https://staging.example", url: "https://staging.example/routes/auto/web/search", error: { message: "boom" } }
+      detail: { backendUrl: "https://staging.example", url: "https://staging.example/routes/demo/web/search", error: { message: "boom" } }
     });
   });
 
@@ -97,7 +97,7 @@ describe("requestJson", () => {
     it(`adds no-double-charge guidance for ${code}`, () => {
       const result = {
         backendUrl: "https://staging.example",
-        url: "https://staging.example/routes/auto/web/search",
+        url: "https://staging.example/routes/demo/web/search",
         status: 409,
         statusText: "Conflict",
         headers: new Headers(),
@@ -117,7 +117,7 @@ describe("requestJson", () => {
         message: expect.stringMatching(/do NOT sign or pay with a new idempotency key/i),
         detail: {
           backendUrl: "https://staging.example",
-          url: "https://staging.example/routes/auto/web/search",
+          url: "https://staging.example/routes/demo/web/search",
           error: { code, message: "idempotency key conflict" }
         }
       });
@@ -127,7 +127,7 @@ describe("requestJson", () => {
   it("leaves payment settlement proof validation to the call command", () => {
     const result = {
       backendUrl: "https://staging.example",
-      url: "https://staging.example/routes/auto/web/search",
+      url: "https://staging.example/routes/demo/web/search",
       status: 409,
       statusText: "Conflict",
       headers: new Headers(),

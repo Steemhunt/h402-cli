@@ -25,7 +25,7 @@ describe("version + command discovery", () => {
 describe("help rendering", () => {
   it("top-level help lists every command", () => {
     const help = topLevelHelp();
-    for (const command of ["wallet", "auth", "credits", "search", "quote", "call"]) {
+    for (const command of ["wallet", "auth", "credits", "search", "show", "quote", "call"]) {
       expect(help).toContain(command);
     }
   });
@@ -37,11 +37,26 @@ describe("help rendering", () => {
     expect(help).toContain("h402 call web/search");
   });
 
-  it("the call help includes an auto-routed example", () => {
+  it("the call help includes a provider-pinned paid example", () => {
     const exampleLines = commandHelp(["call"])
       .split("\n")
       .filter((line) => line.includes("h402 call web/search"));
-    expect(exampleLines.length).toBeGreaterThan(0);
+    expect(exampleLines).toHaveLength(1);
+    expect(exampleLines[0]).toContain("--provider stableenrich-exa");
+    expect(exampleLines[0]).not.toContain(" auto");
+  });
+
+  it("describes omitted-provider behavior per command", () => {
+    expect(commandHelp(["show"])).toMatch(/omitted: list all enabled providers/i);
+    expect(commandHelp(["quote"])).toMatch(/omitted: resolve the catalog default/i);
+    expect(commandHelp(["call"])).toMatch(/omitted: resolve the catalog default/i);
+  });
+
+  it("documents full provider detail through show", () => {
+    const help = commandHelp(["show"]);
+    expect(help).toContain("h402 show web/search");
+    expect(help).toContain("--provider");
+    expect(help).toContain("full provider-native contracts");
   });
 
   it("describes wallet-free discovery, quoting, and conditional call payment", () => {
@@ -53,6 +68,7 @@ describe("help rendering", () => {
     expect(call).toContain("Execute a route and pay if challenged");
     expect(call).toContain("h402 call ai/news");
     expect(call).not.toContain("Execute a paid proxy call");
+    expect(top).toContain("x402 capability store");
   });
 
   it("distinguishes a signing wallet from an optional bonus-credit session", () => {

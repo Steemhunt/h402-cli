@@ -38,7 +38,7 @@ function config(overrides: Partial<CliConfig> = {}): CliConfig {
 }
 
 function args(flags: ParsedArgs["flags"] = {}): ParsedArgs {
-  return { positional: ["call", "web/search"], flags };
+  return { positional: ["call", "web/search"], flags: { provider: "demo", ...flags } };
 }
 
 function challenge(amount: unknown) {
@@ -134,7 +134,20 @@ describe("callCommand --max-usd", () => {
     const fetch = vi.fn().mockResolvedValueOnce(res(402, challenge("50000")));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(callCommand(args({ "max-usd": "0.049999" }))).rejects.toThrow(/exceeds --max-usd 0.049999/);
+    const error = await callCommand(args({ "max-usd": "0.049999" })).catch((thrown: unknown) => thrown);
+
+    expect(error).toMatchObject({
+      message: expect.stringMatching(/exceeds --max-usd 0.049999/),
+      detail: {
+        h402: {
+          cliProviderSelection: {
+            source: "explicit",
+            provider: "demo",
+            pinnedCommand: "h402 call web/search --provider demo --api-url https://test.example --max-usd 0.049999"
+          }
+        }
+      }
+    });
     expect(signOwsTypedData).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -143,7 +156,18 @@ describe("callCommand --max-usd", () => {
     loadConfig.mockResolvedValue(config({ maxUsd: "0.01" }));
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(res(402, challenge("50000"))));
 
-    await expect(callCommand(args())).rejects.toThrow(/exceeds --max-usd 0.01/);
+    const error = await callCommand(args()).catch((thrown: unknown) => thrown);
+
+    expect(error).toMatchObject({
+      message: expect.stringMatching(/exceeds --max-usd 0.01/),
+      detail: {
+        h402: {
+          cliProviderSelection: {
+            pinnedCommand: "h402 call web/search --provider demo --api-url https://test.example --max-usd 0.01"
+          }
+        }
+      }
+    });
   });
 
   it("lets --max-usd override config.maxUsd", async () => {

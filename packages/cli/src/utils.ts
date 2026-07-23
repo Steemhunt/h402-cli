@@ -109,7 +109,7 @@ export function parseQueryFlag(flags: Record<string, string | boolean>) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`Flag --query must be a JSON object, e.g. --query '{"q":"Seoul"}' (got ${JSON.stringify(value)}).`);
   }
-  return parsed as Record<string, unknown>;
+  return validateQueryParams(parsed as Record<string, unknown>);
 }
 
 function writeStream(stream: NodeJS.WritableStream, text: string): Promise<void> {
@@ -152,26 +152,54 @@ export function requireValue<T>(value: T | undefined | null, message: string): T
   return value;
 }
 
-// The provider rides the path: /routes/{auto|provider}/{category}/{action}.
-export function buildProxyPath(routeId: string, query?: Record<string, unknown>, provider?: string) {
+const PINNED_PATH_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function assertConcreteProvider(provider: string) {
+  if (typeof provider !== "string" || !provider) {
+    throw new Error("Provider is required for a pinned route path");
+  }
+  if (provider.toLowerCase() === "auto") {
+    throw new Error('Provider "auto" is reserved for the retired routing endpoint; select a concrete provider.');
+  }
+  if (!PINNED_PATH_SLUG.test(provider)) {
+    throw new Error(`Provider must be a lowercase slug using letters, numbers, and single hyphens (got ${JSON.stringify(provider)}).`);
+  }
+  return provider;
+}
+
+export function encodeRouteId(routeId: string) {
   const parts = routeId.split("/");
   if (parts.length !== 2 || parts.some((part) => !part)) {
     throw new Error("Route id must look like category/action");
   }
-  const path = `/routes/${encodeURIComponent(provider ?? "auto")}/${parts.map(encodeURIComponent).join("/")}`;
-  if (!query) {
-    return path;
+  for (const part of parts) {
+    if (!PINNED_PATH_SLUG.test(part)) {
+      throw new Error(`Route id segment must be a lowercase slug using letters, numbers, and single hyphens (got ${JSON.stringify(part)}).`);
+    }
   }
-  const searchParams = new URLSearchParams();
+  return parts.map(encodeURIComponent).join("/");
+}
+
+export function validateQueryParams(query: Record<string, unknown>) {
   for (const [key, value] of Object.entries(query)) {
-    // Reject anything we can't faithfully serialize as a single URL query value.
-    // Silently dropping arrays/objects/null would send the request with missing
-    // filters and return unintended results.
     if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
       throw new Error(
         `--query value for "${key}" must be a string, number, or boolean; arrays, objects, and null are not supported. Use --json for structured request bodies.`
       );
     }
+  }
+  return query as Record<string, string | number | boolean>;
+}
+
+// Every execution path is provider-pinned. Callers must resolve an explicit
+// provider or the catalog's current display default before building this path.
+export function buildProxyPath(routeId: string, provider: string, query?: Record<string, unknown>) {
+  const path = `/routes/${encodeURIComponent(assertConcreteProvider(provider))}/${encodeRouteId(routeId)}`;
+  if (!query) {
+    return path;
+  }
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(validateQueryParams(query))) {
     searchParams.set(key, String(value));
   }
   const queryString = searchParams.toString();

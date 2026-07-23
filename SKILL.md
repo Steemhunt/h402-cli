@@ -2,20 +2,19 @@
 name: h402
 description: >-
   Call any agent capability — web search, crypto & market data, maps, social,
-  finance, security checks, OCR, weather, and more — through one endpoint and
-  pay per call in Base USDC over x402, using the open-source h402 CLI. Use when
+  finance, security checks, OCR, weather, and more — through h402's capability
+  store and concrete provider paths, paying per call in Base USDC over x402 with
+  the open-source h402 CLI. Use when
   an agent needs live external data or a paid API without managing per-provider
   API keys or subscriptions.
 ---
 
 # h402 — pay-per-call capabilities for AI agents
 
-h402 is the **x402 router for agent capabilities**: one canonical endpoint per task.
-You call the *task* (e.g. `web/search`), and h402 routes the call to the best provider
-and returns a free result or settles a payable challenge in Base USDC. Behind each
-capability, providers compete on price and live quality; h402 auto-pins the best one
-to your call. No per-vendor API keys or subscriptions; a funded wallet is needed only
-for a payable challenge.
+h402 is the **x402 capability store for agents**. Discover a task, inspect its enabled
+providers and provider-native contracts, then call one concrete provider path. h402
+returns a free result or settles a payable challenge in Base USDC without per-vendor
+API keys or subscriptions. A funded wallet is needed only for a payable challenge.
 
 ## When to use this
 
@@ -37,9 +36,11 @@ npm install -g @h402/cli            # install the CLI
 Calls go to the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` to point at another backend.
 
 ```bash
-h402 search "AI news"
-h402 quote web/search --json '{"query":"agent APIs"}'
-h402 call ai/news                    # direct 2xx; no wallet or payment
+h402 search "web search"                         # compact summaries
+h402 show web/search                             # full route + all provider contracts
+h402 show web/search --provider stableenrich-exa # one full provider-native contract
+h402 quote web/search --provider stableenrich-exa --json '{"query":"agent APIs"}'
+h402 call ai/news                                # direct 2xx; omitted provider resolves defaultProvider
 ```
 
 Wallet creation creates a local signing wallet only; `h402 auth` creates the optional bonus-credit session. A funded local wallet is required only if the first response is a payable `402`.
@@ -63,26 +64,31 @@ h402 wallet balance --name agent
 
 A few dollars of USDC covers hundreds of calls — most routes cost **$0.001–$0.05** each.
 
-## The loop: find → (quote) → call
+## The loop: find → inspect → (quote) → call
 
 ```bash
-# 1. Find a route (returns JSON catalog matches)
+# 1. Find a route (compact JSON summaries)
 h402 search "token holders"
 
-# 2. (optional) Preview the price before paying
-h402 quote crypto/token-holders --json '{"tokenAddress":"0x37f0c2915CeCC7e977183B8543Fc0864d03E064C","chain":"base"}'
+# 2. Inspect full provider-native contracts and samples
+h402 show crypto/token-holders
+h402 show crypto/token-holders --provider nansen
 
-# 3. Call it — pays automatically on the 402 challenge, returns the JSON result
-h402 call crypto/token-holders --name agent \
-  --json '{"tokenAddress":"0x37f0c2915CeCC7e977183B8543Fc0864d03E064C","chain":"base"}'
+# 3. (optional) Preview the price for that concrete provider
+h402 quote crypto/token-holders --provider nansen \
+  --json '{"chain":"base","token_address":"0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913"}'
+
+# 4. Call it — pays on a 402 challenge and keeps the provider pinned
+h402 call crypto/token-holders --provider nansen --name agent \
+  --json '{"chain":"base","token_address":"0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913"}'
 ```
 
 - A route id is `category/action` (e.g. `web/search`, `maps/place-details`, `finance/stock-quote`).
 - `--json '{...}'` is the request body; use `--query '{...}'` for GET query params instead.
-- Auto routing capability-routes provider-native input to an enabled candidate whose strict schema accepts it. `web/search` accepts common fields such as `query` and `limit` on the default `auto` route, and capable candidates can also accept native fields such as `freshness` without a pin. Use `--provider` only for determinism, deliberate provider selection, or provider-bound follow-ups.
+- Each call uses one concrete provider. Without `--provider`, the CLI resolves the route's current `defaultProvider` from full catalog detail before execution. Successes record the choice in `h402.cliProviderSelection`; post-resolution failures record it at `error.detail.h402.cliProviderSelection`. The shell-escaped `pinnedCommand` is a fresh-call recipe that keeps non-secret request, backend, wallet, and payment-safety flags but omits passphrases and the previous idempotency key. Prefer explicit `--provider` after inspection for reproducibility. A `410` response is never retried automatically; inspect `error.detail.error.candidates` and start a new explicit call only after choosing one. For an unknown route, follow the preserved `error.detail.error.recovery.command` search guidance.
 - Every command prints **JSON to stdout** (including `wallet fund` and `wallet balance`); failures print to stderr and exit non-zero.
-- A successful `call` returns `{ "data": <provider result>, "meta"?: <contract metadata>, "h402": <routing metadata> }` — read the provider output from `data`, preserve `meta` when present, and inspect `h402` for `routeId`, `provider`, `selectedCandidateId`, `routing`, and `paidBy`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `followUp` describes async work. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — read `error.message` for the reason, `error.detail` for the backend's JSON error when present.
-- Async parent route IDs end in `-async`; a single-parent follow-up is `<parent-route>-status`, while shared multi-parent follow-ups may use a shared `*-status` name. If `h402.followUp` is present, the response is a job receipt, not the final result. Follow `h402.followUp.method`, `path`, `params.jobId`, `docsUrl`, and `instruction` (or the route's `*-status` capability) until the async job completes. The follow-up path is provider-bound, so preserve its provider segment in the CLI call. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
+- A successful `call` returns `{ "data": <provider-native body>, "meta"?: <reserved envelope metadata>, "h402": <execution metadata> }` — `data` remains provider-native, optional `meta` is reserved envelope metadata rather than normalized provider output, and `h402` carries the execution receipt plus `cliProviderSelection`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `h402.followUp` describes async work. A failure exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr; `detail` preserves the backend recovery body unchanged.
+- Async parent route IDs end in `-async`; a single-parent follow-up is `<parent-route>-status`, while shared multi-parent follow-ups may use a shared `*-status` name. If `h402.followUp` is present, the response is a job receipt, not the final result. Pass its provider-native `params` object according to `method` and preserve the provider from `path`. Match `followUp.method` — GET params go via `--query`, POST bodies via `--json`; the CLI rejects `--query` on a POST (`<followUp.params>` means its JSON-encoded object):
 
   ```bash
   # followUp.method GET (most status polls):
