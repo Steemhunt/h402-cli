@@ -83,7 +83,7 @@ const catalogRoute = {
   category: "web",
   action: "search",
   defaultProvider: "demo",
-  candidates: [{ provider: "demo", inputSchema: { type: "object" }, inputExample: { query: "h402" } }]
+  candidates: [{ provider: "demo", status: "enabled", inputSchema: { type: "object" }, inputExample: { query: "h402" } }]
 };
 
 function omittedProviderArgs() {
