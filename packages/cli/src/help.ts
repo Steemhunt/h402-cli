@@ -239,4 +239,11 @@ export function assertTopLevelFlags(flags: Record<string, string | boolean>): vo
   if (stray.length > 0) {
     throw unknownFlagsError(stray, "h402 --help");
   }
+
+  for (const name of ["help", "version"] as const) {
+    const provided = flags[name];
+    if (typeof provided === "string" && provided !== "true") {
+      throw new Error(`Flag --${name} does not take a value (got "${provided}"). Run: h402 --help`);
+    }
+  }
 }

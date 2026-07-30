@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { searchCommand } from "../src/commands";
 import { assertKnownFlags, assertTopLevelFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "../src/help";
@@ -134,6 +136,42 @@ describe("assertTopLevelFlags", () => {
 
   it("rejects an unknown top-level flag (e.g. a typo'd --version)", () => {
     expect(() => assertTopLevelFlags({ versoin: true })).toThrow(/Unknown flag: --versoin\. Run: h402 --help/);
+  });
+
+  it("rejects values captured by top-level boolean flags", () => {
+    expect(() => assertTopLevelFlags({ version: "wallet" })).toThrow(/Flag --version does not take a value \(got "wallet"\)/);
+    expect(() => assertTopLevelFlags({ help: "wallet" })).toThrow(/Flag --help does not take a value \(got "wallet"\)/);
+  });
+
+  it("exits non-zero instead of printing help for --version followed by a word", () => {
+    const entrypoint = path.resolve(import.meta.dirname, "../src/index.ts");
+    const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, "--version", "wallet"], {
+      encoding: "utf8"
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(result.stderr)).toMatchObject({
+      error: { message: 'Flag --version does not take a value (got "wallet"). Run: h402 --help' }
+    });
+  });
+
+  it("validates co-present top-level flags before --version dispatch", () => {
+    const entrypoint = path.resolve(import.meta.dirname, "../src/index.ts");
+    const cases = [
+      { argv: ["--version", "--bogus"], message: "Unknown flag: --bogus. Run: h402 --help" },
+      {
+        argv: ["--version", "--help=wallet"],
+        message: 'Flag --help does not take a value (got "wallet"). Run: h402 --help'
+      }
+    ];
+
+    for (const { argv, message } of cases) {
+      const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, ...argv], { encoding: "utf8" });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(JSON.parse(result.stderr)).toMatchObject({ error: { message } });
+    }
   });
 });
 
