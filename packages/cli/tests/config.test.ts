@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { backendUrl, loadConfig, saveConfig, updateConfig, type CliConfig } from "../src/config";
+import { backendUrl, loadConfig, updateConfig, type CliConfig } from "../src/config";
 
 const PROD_URL = "https://h402.hunt.town";
 
@@ -59,9 +59,9 @@ describe("backendUrl resolution", () => {
   });
 });
 
-// loadConfig/saveConfig read ~/.h402/config.json via os.homedir(); redirect HOME
+// loadConfig/updateConfig read ~/.h402/config.json via os.homedir(); redirect HOME
 // to a throwaway dir so these never touch the developer's real config.
-describe("loadConfig / saveConfig", () => {
+describe("loadConfig / updateConfig", () => {
   const savedHome = process.env.HOME;
   const savedApiUrl = process.env.H402_API_URL;
   let home: string;
@@ -90,7 +90,7 @@ describe("loadConfig / saveConfig", () => {
     process.env.H402_API_URL = "https://staging.example";
 
     await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
-    await saveConfig(await loadConfig());
+    await updateConfig(() => undefined);
 
     const saved = JSON.parse(await readFile(configFile, "utf8"));
     expect(saved.backendUrl).toBe(PROD_URL);
@@ -103,7 +103,7 @@ describe("loadConfig / saveConfig", () => {
       wallets: { h402: { address: "0xabc" } },
       maxUsd: "0.05"
     };
-    await saveConfig(config);
+    await updateConfig(() => config);
     await expect(loadConfig()).resolves.toEqual(config);
   });
 
@@ -112,7 +112,9 @@ describe("loadConfig / saveConfig", () => {
     await mkdir(lockDir, { recursive: true });
     await writeFile(path.join(lockDir, "owner.json"), JSON.stringify(await deadOwner("dead-owner")));
 
-    await saveConfig({ backendUrl: PROD_URL, sessions: { [PROD_URL]: "recovered" }, wallets: {} });
+    await updateConfig((config) => {
+      config.sessions[PROD_URL] = "recovered";
+    });
 
     await expect(loadConfig()).resolves.toMatchObject({ sessions: { [PROD_URL]: "recovered" } });
     await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
@@ -183,7 +185,9 @@ describe("loadConfig / saveConfig", () => {
     await expect(stat(lockDir)).resolves.toBeDefined();
 
     const recoveredUrl = "https://after-crash.example";
-    await saveConfig({ backendUrl: recoveredUrl, sessions: {}, wallets: {} });
+    await updateConfig((config) => {
+      config.backendUrl = recoveredUrl;
+    });
     expect((await loadConfig()).backendUrl).toBe(recoveredUrl);
     await expect(stat(lockDir)).rejects.toMatchObject({ code: "ENOENT" });
   }, 20_000);
@@ -228,7 +232,9 @@ describe("loadConfig / saveConfig", () => {
     }
     let saveSettled = false;
     const recoveredUrl = "https://after-guard-crash.example";
-    const saving = saveConfig({ backendUrl: recoveredUrl, sessions: {}, wallets: {} }).finally(() => {
+    const saving = updateConfig((config) => {
+      config.backendUrl = recoveredUrl;
+    }).finally(() => {
       saveSettled = true;
     });
     await delay(75);
@@ -249,9 +255,11 @@ describe("loadConfig / saveConfig", () => {
     const lockDir = path.join(home, ".h402", ".config.lock");
     await mkdir(lockDir, { recursive: true });
 
-    await expect(saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: { recovered: { address: "0xabc" } } })).rejects.toThrow(
-      /lock has no valid owner metadata.*If no h402 process is writing config, remove this lock path and retry/
-    );
+    await expect(
+      updateConfig((config) => {
+        config.wallets.recovered = { address: "0xabc" };
+      })
+    ).rejects.toThrow(/lock has no valid owner metadata.*If no h402 process is writing config, remove this lock path and retry/);
 
     await expect(stat(lockDir)).resolves.toBeDefined();
     await expect(stat(configFile)).rejects.toMatchObject({ code: "ENOENT" });
@@ -263,7 +271,7 @@ describe("loadConfig / saveConfig", () => {
     const owner = { ...(await deadOwner("remote-owner")), hostname: "some-other-host" };
     await writeFile(path.join(lockDir, "owner.json"), JSON.stringify(owner));
 
-    await expect(saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: {} })).rejects.toThrow(
+    await expect(updateConfig(() => undefined)).rejects.toThrow(
       /cannot be verified from this host.*If no h402 process is writing config, remove this lock path and retry/
     );
     await expect(stat(lockDir)).resolves.toBeDefined();
@@ -277,7 +285,7 @@ describe("loadConfig / saveConfig", () => {
     const owner = { version: 3, pid: process.pid, hostname: os.hostname(), createdAt: new Date().toISOString(), token: "someone-else" };
     await writeFile(path.join(lockDir, "owner.json"), JSON.stringify(owner));
 
-    await expect(saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: {} })).rejects.toThrow(/live PID/);
+    await expect(updateConfig(() => undefined)).rejects.toThrow(/live PID/);
     await expect(stat(lockDir)).resolves.toBeDefined();
   }, 10_000);
 
@@ -342,36 +350,6 @@ describe("loadConfig / saveConfig", () => {
     await rm(lockDir, { recursive: true });
   });
 
-  it("serializes concurrent saves and preserves independent wallet/session updates", async () => {
-    await Promise.all([
-      saveConfig({ backendUrl: PROD_URL, sessions: { "https://one.example": "one" }, wallets: { one: { address: "0x111" } } }),
-      saveConfig({ backendUrl: PROD_URL, sessions: { "https://two.example": "two" }, wallets: { two: { address: "0x222" } } })
-    ]);
-
-    await expect(loadConfig()).resolves.toEqual({
-      backendUrl: PROD_URL,
-      sessions: { "https://one.example": "one", "https://two.example": "two" },
-      wallets: { one: { address: "0x111" }, two: { address: "0x222" } }
-    });
-  });
-
-  it("does not let a stale full-snapshot save roll back newer wallet/session values", async () => {
-    const stale: CliConfig = {
-      backendUrl: PROD_URL,
-      sessions: { "https://api.example": "old" },
-      wallets: { agent: { address: "0x111" } }
-    };
-
-    await saveConfig({ backendUrl: PROD_URL, sessions: { "https://api.example": "new" }, wallets: {} });
-    await saveConfig(stale);
-
-    await expect(loadConfig()).resolves.toEqual({
-      backendUrl: PROD_URL,
-      sessions: { "https://api.example": "new" },
-      wallets: { agent: { address: "0x111" } }
-    });
-  });
-
   it("throws on malformed JSON and does not overwrite it", async () => {
     await mkdir(path.dirname(configFile), { recursive: true });
     await writeFile(configFile, "{ not valid json");
@@ -414,7 +392,7 @@ describe("loadConfig / saveConfig", () => {
   });
 
   it.skipIf(process.platform === "win32")("writes config and directory with private permissions", async () => {
-    await saveConfig({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+    await updateConfig(() => undefined);
     expect((await stat(configFile)).mode & 0o777).toBe(0o600);
     expect((await stat(path.dirname(configFile))).mode & 0o777).toBe(0o700);
   });

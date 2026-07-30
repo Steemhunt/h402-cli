@@ -20,7 +20,6 @@ export async function promptHidden(question: string) {
       if (wasPaused) {
         stdin.pause();
       }
-      stdin.removeAllListeners("keypress");
     };
 
     const finish = () => {
