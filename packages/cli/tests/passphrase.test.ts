@@ -61,6 +61,15 @@ describe("signWithWalletPassphrase", () => {
     );
   });
 
+  it("lets --no-passphrase override a bare --passphrase without prompting", async () => {
+    const sign = vi.fn().mockResolvedValue("0xsig");
+
+    await expect(
+      signWithWalletPassphrase(args({ "no-passphrase": true, passphrase: true }), "agent", sign)
+    ).resolves.toBe("0xsig");
+    expect(sign).toHaveBeenCalledWith(undefined);
+  });
+
   it("re-throws non-passphrase signing errors untouched", async () => {
     const sign = vi.fn().mockRejectedValue(new Error("network down"));
     await expect(signWithWalletPassphrase(args(), "agent", sign)).rejects.toThrow("network down");
@@ -83,6 +92,10 @@ describe("createPassphrase", () => {
     await expect(createPassphrase(args({ passphrase: true }))).rejects.toThrow(
       "Bare --passphrase prompts interactively; pass --passphrase <s> or set H402_WALLET_PASSPHRASE in non-interactive use."
     );
+  });
+
+  it("lets --no-passphrase override a bare --passphrase without prompting", async () => {
+    await expect(createPassphrase(args({ "no-passphrase": true, passphrase: true }))).resolves.toBeUndefined();
   });
 });
 

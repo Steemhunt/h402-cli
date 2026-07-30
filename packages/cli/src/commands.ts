@@ -66,7 +66,11 @@ export async function signWithWalletPassphrase<T>(
   sign: (passphrase?: string) => Promise<T>
 ): Promise<T> {
   // Bare --passphrase = "prompt me" (kept out of shell history/env).
-  const explicit = args.flags.passphrase === true ? await promptBarePassphrase() : explicitPassphrase(args);
+  const explicit = flagBoolean(args.flags, "no-passphrase")
+    ? undefined
+    : args.flags.passphrase === true
+      ? await promptBarePassphrase()
+      : explicitPassphrase(args);
   try {
     return await sign(explicit);
   } catch (error) {
@@ -90,6 +94,9 @@ export async function signWithWalletPassphrase<T>(
 // opt in with `--passphrase <s>` / H402_WALLET_PASSPHRASE, or bare `--passphrase`
 // to be prompted with confirmation.
 export async function createPassphrase(args: ParsedArgs) {
+  if (flagBoolean(args.flags, "no-passphrase")) {
+    return undefined;
+  }
   if (args.flags.passphrase === true) {
     return promptBarePassphrase({ confirm: true });
   }
