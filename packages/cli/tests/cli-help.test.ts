@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { searchCommand } from "../src/commands";
 import { assertKnownFlags, assertTopLevelFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "../src/help";
+import { parseArgs } from "../src/utils";
 
 describe("version + command discovery", () => {
   it("getVersion returns the package version", () => {
@@ -120,6 +121,17 @@ describe("assertKnownFlags", () => {
     expect(() => assertKnownFlags(["call"], { "api-url": true })).toThrow(/Flag --api-url requires a value/);
     expect(() => assertKnownFlags(["quote"], { json: true })).toThrow(/Flag --json requires a value/);
     expect(() => assertKnownFlags(["search"], { limit: true })).toThrow(/Flag --limit requires a value/);
+  });
+
+  it("rejects empty required-value flags from equals-form argv", () => {
+    for (const { argv, commandPath, flag } of [
+      { argv: ["wallet", "create", "--name="], commandPath: ["wallet", "create"], flag: "name" },
+      { argv: ["call", "ai/news", "--idempotency-key="], commandPath: ["call"], flag: "idempotency-key" }
+    ]) {
+      const parsed = parseArgs(argv);
+      expect(parsed.flags[flag], argv.join(" ")).toBe("");
+      expect(() => assertKnownFlags(commandPath, parsed.flags)).toThrow(`Flag --${flag} requires a value`);
+    }
   });
 
   it("rejects a stray value on a boolean flag but still accepts true/bare", () => {

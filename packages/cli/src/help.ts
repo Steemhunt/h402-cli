@@ -220,7 +220,7 @@ export function assertKnownFlags(commandPath: string[], flags: Record<string, st
 
   for (const [name, provided] of Object.entries(flags)) {
     const arity = valueFlags.get(name);
-    if (arity === "required" && typeof provided !== "string") {
+    if (arity === "required" && (typeof provided !== "string" || provided === "")) {
       throw new Error(`Flag --${name} requires a value. Run: h402 ${commandPath.join(" ")} --help`);
     }
     // A boolean flag that captured a following token (e.g. `--no-passphrase web/search`,
