@@ -147,22 +147,31 @@ describe("doc examples stay runnable against the provider-pinned catalog contrac
     }
   });
 
-  it("core README scopes selectExactRequirement to h402 canonical challenges", () => {
+  it("documents explicit asset and transfer-method pins for canonical h402 challenges", () => {
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
+    const skill = readFileSync(DOC_FILES["SKILL.md"], "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");
     expect(text).toContain("strict CAIP-2 `eip155:8453`");
+    expect(text).toContain("does not pin the asset or transfer method");
     expect(text).toContain("matchAsset: (asset)");
     expect(text).toContain("requireEip3009: true");
     expect(text).toContain("BASE_USDC_ADDRESS");
     expect(text).toContain("short-form network names");
     expect(text).toContain("supply your own selector");
+    expect(text).not.toContain("selects the first Base USDC `exact` requirement");
+    expect(skill).toContain("does not pin the asset or transfer method");
+    expect(skill).toContain("pass `matchAsset` and `requireEip3009`");
   });
 
-  it("documents the core build prerequisite for standalone CLI checks", () => {
+  it("documents install and core build prerequisites for standalone CLI checks", () => {
     const text = readFileSync(DOC_FILES["package README.md"], "utf8");
-    const coreBuild = text.indexOf("npm run -w @h402/core build");
-    const cliTypecheck = text.indexOf("npm run -w @h402/cli typecheck");
+    const contributing = text.slice(text.indexOf("## Contributing"));
+    const install = contributing.indexOf("npm install");
+    const coreBuild = contributing.indexOf("npm run -w @h402/core build");
+    const cliTypecheck = contributing.indexOf("npm run -w @h402/cli typecheck");
+    expect(install).toBeGreaterThan(-1);
     expect(coreBuild).toBeGreaterThan(-1);
+    expect(install).toBeLessThan(coreBuild);
     expect(coreBuild).toBeLessThan(cliTypecheck);
   });
 });

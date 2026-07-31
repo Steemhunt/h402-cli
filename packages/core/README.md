@@ -15,7 +15,7 @@ npm install @h402/core
 
 ## What's inside
 
-- **Constants** — `X402_VERSION`, `BASE_NETWORK`, `BASE_CHAIN_ID`, the USDC EIP-712 domain (`USDC_EIP712_NAME`, `USDC_EIP712_VERSION`, `USDC_DECIMALS`), and the `transferWithAuthorizationTypes` struct.
+- **Constants** — `X402_VERSION`, `BASE_NETWORK`, `BASE_CHAIN_ID`, `BASE_USDC_ADDRESS`, the USDC EIP-712 domain (`USDC_EIP712_NAME`, `USDC_EIP712_VERSION`, `USDC_DECIMALS`), and the `transferWithAuthorizationTypes` struct.
 - **Types** — `X402PaymentRequired`, `X402PaymentRequirements`, `X402PaymentPayload`, `X402Settlement`, and the `h402-credit` / `h402-route` extensions.
 - **Headers** — `encodeX402Header` / `decodeX402Header`, `paymentRequiredFromResponse`, `parsePaymentRequiredHeader`, `parsePaymentSignatureHeader`, plus the `X402_HEADERS` names.
 - **EIP-3009** — `buildTransferAuthorization`, `createNonce`, `selectExactRequirement`.
