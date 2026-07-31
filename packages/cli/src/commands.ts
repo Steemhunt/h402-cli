@@ -424,7 +424,7 @@ export async function quoteCommand(args: ParsedArgs) {
       method,
       body: body === undefined ? undefined : JSON.stringify(body)
     });
-    const paymentRequired = paymentRequiredFromResponse(result.headers, result.body);
+    const paymentRequired = result.status === 402 ? paymentRequiredFromResponse(result.headers, result.body) : null;
     if (paymentRequired) {
       await printJson(withProviderSelection({ paymentRequired }, providerSelection));
       return;
