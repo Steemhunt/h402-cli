@@ -191,6 +191,24 @@ describe("assertTopLevelFlags", () => {
       expect(JSON.parse(result.stderr)).toMatchObject({ error: { message } });
     }
   });
+
+  it("validates the version word form and rejects --version on commands", () => {
+    const entrypoint = path.resolve(import.meta.dirname, "../src/index.ts");
+    const cases = [
+      ["version", "--bogus"],
+      ["version", "wallet"],
+      ["call", "ai/news", "--version"]
+    ];
+
+    for (const argv of cases) {
+      const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, ...argv], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: tempHome }
+      });
+      expect(result.status, argv.join(" ")).toBe(1);
+      expect(result.stdout, argv.join(" ")).toBe("");
+    }
+  });
 });
 
 describe("required-arg validation", () => {
