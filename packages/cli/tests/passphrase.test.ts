@@ -123,4 +123,53 @@ describe("bare --passphrase through the CLI dispatch path", () => {
     await expect(signWithWalletPassphrase(parsed, "vault", sign)).rejects.toThrow("Bare --passphrase prompts interactively");
     expect(sign).not.toHaveBeenCalled();
   });
+
+  // Reviewer regression (cli#84): the contradictory forms must survive the real
+  // parse path too. parseArgs never consumes a "--"-prefixed token as a flag
+  // value, so both flag orders reach the helpers as the combined flag object —
+  // and vitest is non-interactive, so resolving proves no prompt was attempted.
+  it("resolves --no-passphrase with bare --passphrase to passphrase-less signing in both flag orders", async () => {
+    for (const argv of [
+      ["call", "web/search", "--no-passphrase", "--passphrase"],
+      ["call", "web/search", "--passphrase", "--no-passphrase"]
+    ]) {
+      const parsed = parseArgs(argv);
+      expect(parsed.flags["no-passphrase"], argv.join(" ")).toBe(true);
+      expect(parsed.flags.passphrase, argv.join(" ")).toBe(true);
+      expect(() => assertKnownFlags(["call"], parsed.flags)).not.toThrow();
+      const sign = vi.fn().mockResolvedValue("0xsig");
+      await expect(signWithWalletPassphrase(parsed, "vault", sign)).resolves.toBe("0xsig");
+      expect(sign).toHaveBeenCalledWith(undefined);
+    }
+  });
+
+  it("lets --no-passphrase win over a valued --passphrase through the real parse path", async () => {
+    for (const argv of [
+      ["call", "web/search", "--no-passphrase", "--passphrase", "secret"],
+      ["call", "web/search", "--passphrase", "secret", "--no-passphrase"]
+    ]) {
+      const parsed = parseArgs(argv);
+      expect(parsed.flags["no-passphrase"], argv.join(" ")).toBe(true);
+      expect(parsed.flags.passphrase, argv.join(" ")).toBe("secret");
+      expect(() => assertKnownFlags(["call"], parsed.flags)).not.toThrow();
+      const sign = vi.fn().mockResolvedValue("0xsig");
+      await expect(signWithWalletPassphrase(parsed, "vault", sign)).resolves.toBe("0xsig");
+      expect(sign).toHaveBeenCalledWith(undefined);
+    }
+  });
+
+  it("creates passphrase-less when --no-passphrase contradicts --passphrase on wallet create", async () => {
+    for (const argv of [
+      ["wallet", "create", "--name", "x", "--no-passphrase", "--passphrase"],
+      ["wallet", "create", "--name", "x", "--passphrase", "--no-passphrase"],
+      ["wallet", "create", "--name", "x", "--passphrase", "secret", "--no-passphrase"]
+    ]) {
+      const parsed = parseArgs(argv);
+      expect(parsed.flags["no-passphrase"], argv.join(" ")).toBe(true);
+      expect(() => assertKnownFlags(["wallet", "create"], parsed.flags)).not.toThrow();
+      // createPassphrase is the create branch's whole passphrase decision;
+      // undefined = passphrase-less and no prompt, with no wallet side effects.
+      await expect(createPassphrase(parsed)).resolves.toBeUndefined();
+    }
+  });
 });
