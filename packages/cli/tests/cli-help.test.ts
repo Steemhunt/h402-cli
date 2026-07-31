@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { searchCommand } from "../src/commands";
 import { assertKnownFlags, assertTopLevelFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "../src/help";
 
@@ -128,6 +130,18 @@ describe("assertKnownFlags", () => {
 });
 
 describe("assertTopLevelFlags", () => {
+  // Real-process runs stay hermetic: the child resolves ~/.h402 under a
+  // throwaway HOME so the developer's own config can never be read or touched.
+  let tempHome: string;
+
+  beforeAll(() => {
+    tempHome = mkdtempSync(path.join(tmpdir(), "h402-cli-help-"));
+  });
+
+  afterAll(() => {
+    rmSync(tempHome, { recursive: true, force: true });
+  });
+
   it("allows --help / --version and no flags", () => {
     expect(() => assertTopLevelFlags({})).not.toThrow();
     expect(() => assertTopLevelFlags({ help: true })).not.toThrow();
@@ -146,7 +160,8 @@ describe("assertTopLevelFlags", () => {
   it("exits non-zero instead of printing help for --version followed by a word", () => {
     const entrypoint = path.resolve(import.meta.dirname, "../src/index.ts");
     const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, "--version", "wallet"], {
-      encoding: "utf8"
+      encoding: "utf8",
+      env: { ...process.env, HOME: tempHome }
     });
 
     expect(result.status).toBe(1);
@@ -167,7 +182,10 @@ describe("assertTopLevelFlags", () => {
     ];
 
     for (const { argv, message } of cases) {
-      const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, ...argv], { encoding: "utf8" });
+      const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, ...argv], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: tempHome }
+      });
       expect(result.status).toBe(1);
       expect(result.stdout).toBe("");
       expect(JSON.parse(result.stderr)).toMatchObject({ error: { message } });
