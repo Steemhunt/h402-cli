@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { searchCommand } from "../src/commands";
 import { assertKnownFlags, assertTopLevelFlags, commandHelp, getVersion, isKnownCommand, resolveCommandPath, topLevelHelp } from "../src/help";
+import { parseArgs } from "../src/utils";
 
 describe("version + command discovery", () => {
   it("getVersion returns the package version", () => {
@@ -122,6 +123,17 @@ describe("assertKnownFlags", () => {
     expect(() => assertKnownFlags(["search"], { limit: true })).toThrow(/Flag --limit requires a value/);
   });
 
+  it("rejects empty required-value flags from equals-form argv", () => {
+    for (const { argv, commandPath, flag } of [
+      { argv: ["wallet", "create", "--name="], commandPath: ["wallet", "create"], flag: "name" },
+      { argv: ["call", "ai/news", "--idempotency-key="], commandPath: ["call"], flag: "idempotency-key" }
+    ]) {
+      const parsed = parseArgs(argv);
+      expect(parsed.flags[flag], argv.join(" ")).toBe("");
+      expect(() => assertKnownFlags(commandPath, parsed.flags)).toThrow(`Flag --${flag} requires a value`);
+    }
+  });
+
   it("rejects a stray value on a boolean flag but still accepts true/bare", () => {
     expect(() => assertKnownFlags(["call"], { "no-credit": "web/search" })).toThrow(/Flag --no-credit does not take a value/);
     expect(() => assertKnownFlags(["call"], { "no-credit": true })).not.toThrow();
@@ -189,6 +201,30 @@ describe("assertTopLevelFlags", () => {
       expect(result.status).toBe(1);
       expect(result.stdout).toBe("");
       expect(JSON.parse(result.stderr)).toMatchObject({ error: { message } });
+    }
+  });
+
+  it("rejects empty equals-form required flags through the CLI dispatch path", () => {
+    const entrypoint = path.resolve(import.meta.dirname, "../src/index.ts");
+    const cases = [
+      {
+        argv: ["wallet", "create", "--name="],
+        message: "Flag --name requires a value. Run: h402 wallet create --help"
+      },
+      {
+        argv: ["call", "ai/news", "--idempotency-key="],
+        message: "Flag --idempotency-key requires a value. Run: h402 call --help"
+      }
+    ];
+
+    for (const { argv, message } of cases) {
+      const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, ...argv], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: tempHome }
+      });
+      expect(result.status, argv.join(" ")).toBe(1);
+      expect(result.stdout, argv.join(" ")).toBe("");
+      expect(JSON.parse(result.stderr), argv.join(" ")).toMatchObject({ error: { message } });
     }
   });
 
