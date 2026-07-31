@@ -12,7 +12,7 @@ import {
 } from "@h402/core";
 import { signOwsTypedData } from "./ows.js";
 
-export { X402_HEADERS, paymentRequiredFromResponse, type X402PaymentRequired } from "@h402/core";
+export { X402_HEADERS, paymentRequiredFromResponse } from "@h402/core";
 
 // The CLI can only sign EIP-3009 Base USDC `exact` payments, so it must refuse to
 // sign anything else a backend offers — a non-USDC asset or a non-EIP-3009

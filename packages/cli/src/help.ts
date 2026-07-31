@@ -122,7 +122,7 @@ export function isKnownCommand(command: string): boolean {
   return Object.hasOwn(COMMANDS, command);
 }
 
-export function specFor(commandPath: string[]): CommandSpec | undefined {
+function specFor(commandPath: string[]): CommandSpec | undefined {
   const [command, subcommand] = commandPath;
   const top = command ? COMMANDS[command] : undefined;
   if (!top) {

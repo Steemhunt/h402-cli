@@ -60,6 +60,12 @@ describe("quote/call exit codes on backend responses", () => {
     await expect(quoteCommand(args("web/search"))).rejects.toThrow(/backend sent malformed challenge/);
   });
 
+  it("quote rejects a challenge-shaped body on a non-402 response", async () => {
+    stubFetch(500, challenge);
+    await expect(quoteCommand(args("web/search"))).rejects.toThrow(/Request failed: 500/);
+    expect(stdout).not.toHaveBeenCalled();
+  });
+
   it("quote prints the body for a free route (2xx, no challenge)", async () => {
     stubFetch(200, { result: 42 });
     await quoteCommand(args("web/free"));

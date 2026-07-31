@@ -3,6 +3,18 @@ export type ParsedArgs = {
   flags: Record<string, string | boolean>;
 };
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function mergeH402(body: unknown, patch: Record<string, unknown>) {
+  if (isRecord(body)) {
+    const h402 = isRecord(body.h402) ? body.h402 : {};
+    return { ...body, h402: { ...h402, ...patch } };
+  }
+  return { data: body, h402: patch };
+}
+
 export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   const flags: Record<string, string | boolean> = {};
@@ -180,7 +192,7 @@ export function encodeRouteId(routeId: string) {
   return parts.map(encodeURIComponent).join("/");
 }
 
-export function validateQueryParams(query: Record<string, unknown>) {
+function validateQueryParams(query: Record<string, unknown>) {
   for (const [key, value] of Object.entries(query)) {
     if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
       throw new Error(

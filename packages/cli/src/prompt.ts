@@ -1,4 +1,4 @@
-export async function promptHidden(question: string) {
+async function promptHidden(question: string) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error(
       "Passphrase prompt requires an interactive terminal. Pass --no-passphrase if the wallet was created without one (the default agent setup), or set H402_WALLET_PASSPHRASE."
