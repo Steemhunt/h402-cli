@@ -61,6 +61,15 @@ describe("signWithWalletPassphrase", () => {
     );
   });
 
+  it("lets --no-passphrase override a bare --passphrase without prompting", async () => {
+    const sign = vi.fn().mockResolvedValue("0xsig");
+
+    await expect(
+      signWithWalletPassphrase(args({ "no-passphrase": true, passphrase: true }), "agent", sign)
+    ).resolves.toBe("0xsig");
+    expect(sign).toHaveBeenCalledWith(undefined);
+  });
+
   it("re-throws non-passphrase signing errors untouched", async () => {
     const sign = vi.fn().mockRejectedValue(new Error("network down"));
     await expect(signWithWalletPassphrase(args(), "agent", sign)).rejects.toThrow("network down");
@@ -83,6 +92,10 @@ describe("createPassphrase", () => {
     await expect(createPassphrase(args({ passphrase: true }))).rejects.toThrow(
       "Bare --passphrase prompts interactively; pass --passphrase <s> or set H402_WALLET_PASSPHRASE in non-interactive use."
     );
+  });
+
+  it("lets --no-passphrase override a bare --passphrase without prompting", async () => {
+    await expect(createPassphrase(args({ "no-passphrase": true, passphrase: true }))).resolves.toBeUndefined();
   });
 });
 
@@ -109,5 +122,54 @@ describe("bare --passphrase through the CLI dispatch path", () => {
     const sign = vi.fn();
     await expect(signWithWalletPassphrase(parsed, "vault", sign)).rejects.toThrow("Bare --passphrase prompts interactively");
     expect(sign).not.toHaveBeenCalled();
+  });
+
+  // Reviewer regression (cli#84): the contradictory forms must survive the real
+  // parse path too. parseArgs never consumes a "--"-prefixed token as a flag
+  // value, so both flag orders reach the helpers as the combined flag object —
+  // and vitest is non-interactive, so resolving proves no prompt was attempted.
+  it("resolves --no-passphrase with bare --passphrase to passphrase-less signing in both flag orders", async () => {
+    for (const argv of [
+      ["call", "web/search", "--no-passphrase", "--passphrase"],
+      ["call", "web/search", "--passphrase", "--no-passphrase"]
+    ]) {
+      const parsed = parseArgs(argv);
+      expect(parsed.flags["no-passphrase"], argv.join(" ")).toBe(true);
+      expect(parsed.flags.passphrase, argv.join(" ")).toBe(true);
+      expect(() => assertKnownFlags(["call"], parsed.flags)).not.toThrow();
+      const sign = vi.fn().mockResolvedValue("0xsig");
+      await expect(signWithWalletPassphrase(parsed, "vault", sign)).resolves.toBe("0xsig");
+      expect(sign).toHaveBeenCalledWith(undefined);
+    }
+  });
+
+  it("lets --no-passphrase win over a valued --passphrase through the real parse path", async () => {
+    for (const argv of [
+      ["call", "web/search", "--no-passphrase", "--passphrase", "secret"],
+      ["call", "web/search", "--passphrase", "secret", "--no-passphrase"]
+    ]) {
+      const parsed = parseArgs(argv);
+      expect(parsed.flags["no-passphrase"], argv.join(" ")).toBe(true);
+      expect(parsed.flags.passphrase, argv.join(" ")).toBe("secret");
+      expect(() => assertKnownFlags(["call"], parsed.flags)).not.toThrow();
+      const sign = vi.fn().mockResolvedValue("0xsig");
+      await expect(signWithWalletPassphrase(parsed, "vault", sign)).resolves.toBe("0xsig");
+      expect(sign).toHaveBeenCalledWith(undefined);
+    }
+  });
+
+  it("creates passphrase-less when --no-passphrase contradicts --passphrase on wallet create", async () => {
+    for (const argv of [
+      ["wallet", "create", "--name", "x", "--no-passphrase", "--passphrase"],
+      ["wallet", "create", "--name", "x", "--passphrase", "--no-passphrase"],
+      ["wallet", "create", "--name", "x", "--passphrase", "secret", "--no-passphrase"]
+    ]) {
+      const parsed = parseArgs(argv);
+      expect(parsed.flags["no-passphrase"], argv.join(" ")).toBe(true);
+      expect(() => assertKnownFlags(["wallet", "create"], parsed.flags)).not.toThrow();
+      // createPassphrase is the create branch's whole passphrase decision;
+      // undefined = passphrase-less and no prompt, with no wallet side effects.
+      await expect(createPassphrase(parsed)).resolves.toBeUndefined();
+    }
   });
 });
