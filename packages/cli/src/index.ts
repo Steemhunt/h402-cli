@@ -47,14 +47,14 @@ async function main() {
 
   const commandPath = resolveCommandPath(args.positional);
 
+  // Reject typo'd/unsupported flags before doing any work (a silently ignored
+  // --idempotency-key on a paid call could double-charge on retry).
+  assertKnownFlags(commandPath, args.flags);
+
   if (flagBoolean(args.flags, "help")) {
     await writeStdout(`${commandHelp(commandPath)}\n`);
     return;
   }
-
-  // Reject typo'd/unsupported flags before doing any work (a silently ignored
-  // --idempotency-key on a paid call could double-charge on retry).
-  assertKnownFlags(commandPath, args.flags);
 
   if (command === "wallet") return walletCommand(args);
   if (command === "auth") return authCommand(args);
