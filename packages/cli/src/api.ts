@@ -1,6 +1,7 @@
 import { Agent } from "undici";
 import { CliError } from "./errors.js";
 import { getVersion } from "./help.js";
+import { isRecord } from "./utils.js";
 
 export const H402_HTTP_TIMEOUT_MS = 450_000;
 
@@ -9,7 +10,7 @@ const h402FetchDispatcher = new Agent({
   bodyTimeout: H402_HTTP_TIMEOUT_MS
 });
 
-type FetchInitWithDispatcher = RequestInit & { dispatcher?: Agent; token?: string };
+type FetchInit = RequestInit & { token?: string };
 
 export type ApiResponse<T> = {
   backendUrl: string;
@@ -21,13 +22,13 @@ export type ApiResponse<T> = {
 };
 
 function networkErrorMessage(error: unknown) {
-  const cause = error && typeof error === "object" ? (error as { cause?: unknown }).cause : undefined;
-  if (cause && typeof cause === "object") {
-    const code = (cause as { code?: unknown }).code;
+  const cause = isRecord(error) ? error.cause : undefined;
+  if (isRecord(cause)) {
+    const code = cause.code;
     if (typeof code === "string" && code) {
       return code;
     }
-    const message = (cause as { message?: unknown }).message;
+    const message = cause.message;
     if (typeof message === "string" && message) {
       return message;
     }
@@ -38,7 +39,7 @@ function networkErrorMessage(error: unknown) {
 export async function requestJson<T>(
   backendUrl: string,
   path: string,
-  init: FetchInitWithDispatcher = {}
+  init: FetchInit = {}
 ): Promise<ApiResponse<T>> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
@@ -54,7 +55,7 @@ export async function requestJson<T>(
     headers.set("authorization", `Bearer ${init.token}`);
   }
 
-  const fetchInit: FetchInitWithDispatcher = { ...init };
+  const fetchInit: FetchInit = { ...init };
   delete fetchInit.token;
   const url = `${backendUrl}${path}`;
   let response: Response;
@@ -62,7 +63,7 @@ export async function requestJson<T>(
     response = await fetch(url, {
       ...fetchInit,
       headers,
-      dispatcher: fetchInit.dispatcher ?? h402FetchDispatcher
+      dispatcher: h402FetchDispatcher
     } as RequestInit);
   } catch (error) {
     throw new CliError(`Request to ${url} failed: ${networkErrorMessage(error)}`, { backendUrl, url });
@@ -87,8 +88,8 @@ function responseContext<T>(response: ApiResponse<T>) {
 function responseErrorDetail<T>(response: ApiResponse<T>): unknown {
   const context = responseContext(response);
   const { body } = response;
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    return { ...(body as Record<string, unknown>), ...context };
+  if (isRecord(body)) {
+    return { ...body, ...context };
   }
   return context;
 }
@@ -97,30 +98,28 @@ function responseErrorDetail<T>(response: ApiResponse<T>): unknown {
 // { error: { message } }, { error: "..." }, and { message } shapes — so the stderr
 // envelope's `message` is useful even before a caller inspects `detail`.
 function backendMessage(body: unknown): string | undefined {
-  if (!body || typeof body !== "object") {
+  if (!isRecord(body)) {
     return undefined;
   }
-  const record = body as Record<string, unknown>;
-  const error = record.error;
+  const error = body.error;
   if (typeof error === "string") {
     return error;
   }
-  if (error && typeof error === "object" && typeof (error as Record<string, unknown>).message === "string") {
-    return (error as Record<string, unknown>).message as string;
+  if (isRecord(error) && typeof error.message === "string") {
+    return error.message;
   }
-  return typeof record.message === "string" ? record.message : undefined;
+  return typeof body.message === "string" ? body.message : undefined;
 }
 
 export function backendErrorCode(body: unknown): string | undefined {
-  if (!body || typeof body !== "object") {
+  if (!isRecord(body)) {
     return undefined;
   }
-  const record = body as Record<string, unknown>;
-  const error = record.error;
-  if (error && typeof error === "object" && typeof (error as Record<string, unknown>).code === "string") {
-    return (error as Record<string, unknown>).code as string;
+  const error = body.error;
+  if (isRecord(error) && typeof error.code === "string") {
+    return error.code;
   }
-  return typeof record.code === "string" ? record.code : undefined;
+  return typeof body.code === "string" ? body.code : undefined;
 }
 
 const MONEY_SENSITIVE_IDEMPOTENCY_CODES = new Set([

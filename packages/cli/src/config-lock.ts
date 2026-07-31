@@ -3,10 +3,7 @@ import { chmod, mkdir, open, readFile, rm, stat, writeFile, type FileHandle } fr
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+import { isRecord } from "./utils.js";
 
 type ConfigLockOwner = {
   version: 3;
@@ -104,8 +101,8 @@ async function tryAcquireReclamationGuard(dir: string): Promise<{ release?: Conf
 }
 
 function isConfigLockOwner(value: unknown): value is ConfigLockOwner {
-  if (!isPlainObject(value)) return false;
-  const owner = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
+  const owner = value;
   return (
     owner.version === 3 &&
     Number.isSafeInteger(owner.pid) &&
