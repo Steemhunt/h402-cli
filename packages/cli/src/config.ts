@@ -89,24 +89,6 @@ function cloneConfig(config: CliConfig): CliConfig {
   return cloned;
 }
 
-function mergeConfigForSave(existing: CliConfig | undefined, next: CliConfig): CliConfig {
-  if (!existing) return next;
-  const merged: CliConfig = {
-    backendUrl: existing.backendUrl || next.backendUrl,
-    // saveConfig receives full snapshots from some callers/tests. Preserve values
-    // already written under the lock on key collisions so a stale snapshot cannot
-    // roll back an unrelated session or wallet update; command code uses
-    // updateConfig() for intentional replacements.
-    sessions: { ...next.sessions, ...existing.sessions },
-    wallets: { ...next.wallets, ...existing.wallets }
-  };
-  const maxUsd = next.maxUsd ?? existing.maxUsd;
-  if (maxUsd !== undefined) {
-    merged.maxUsd = maxUsd;
-  }
-  return merged;
-}
-
 async function atomicWritePrivateJson(file: string, config: CliConfig) {
   const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
@@ -117,23 +99,6 @@ async function atomicWritePrivateJson(file: string, config: CliConfig) {
     await rm(tmp, { force: true }).catch(() => undefined);
     throw error;
   }
-}
-
-export async function saveConfig(config: CliConfig) {
-  const file = configPath();
-  const dir = path.dirname(file);
-  // The config holds session tokens and wallet mappings — keep it user-private.
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  const releaseLock = await acquireConfigLock(dir);
-  try {
-    const merged = mergeConfigForSave(await readConfigFile(file), config);
-    await atomicWritePrivateJson(file, merged);
-  } finally {
-    await releaseLock();
-  }
-  // mkdir/write/rename modes are umask-masked, so tighten existing dir/file too.
-  // Best-effort: a no-op on platforms without POSIX permissions.
-  await tightenConfigPermissions(file);
 }
 
 export async function updateConfig(update: (config: CliConfig) => void | CliConfig | Promise<void | CliConfig>) {

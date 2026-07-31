@@ -6,7 +6,6 @@ const { ADDR } = vi.hoisted(() => ({ ADDR: "0x1111111111111111111111111111111111
 
 vi.mock("../src/config.js", () => ({
   loadConfig: vi.fn(async () => ({ backendUrl: "https://test.example", sessions: {}, wallets: { h402: { address: ADDR } } })),
-  saveConfig: vi.fn(),
   backendUrl: () => "https://test.example"
 }));
 

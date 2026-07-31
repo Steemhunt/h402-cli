@@ -114,6 +114,11 @@ function withIdempotencyKey(error: unknown, idempotencyKey: string) {
 
 type ResolvedWallet = { name: string; address: string };
 
+function adoptWallet(config: CliConfig, name: string, address: string): ResolvedWallet {
+  config.wallets[name] = { address };
+  return { name, address };
+}
+
 function rejectExtraPositionals(args: ParsedArgs, maxPositionals: number, commandForHelp: string, hint?: string) {
   const extra = args.positional.slice(maxPositionals);
   if (extra.length === 0) {
@@ -135,10 +140,9 @@ function isExistingOwsWalletError(error: unknown) {
 async function adoptOwsWalletByName(name: string, config: CliConfig): Promise<ResolvedWallet | undefined> {
   try {
     const wallet = await getOwsWallet(name);
-    const resolved = { name: wallet.name || name, address: wallet.address.toLowerCase() };
-    config.wallets[resolved.name] = { address: resolved.address };
+    const resolved = adoptWallet(config, wallet.name || name, wallet.address.toLowerCase());
     await updateConfig((current) => {
-      current.wallets[resolved.name] = { address: resolved.address };
+      adoptWallet(current, resolved.name, resolved.address);
     });
     return resolved;
   } catch (error) {
@@ -153,10 +157,9 @@ async function adoptOwsWalletByAddress(address: string, config: CliConfig): Prom
   const wallets = await listOwsWallets();
   const match = wallets.find((wallet) => wallet.address.toLowerCase() === address);
   if (!match) return undefined;
-  const resolved = { name: match.name, address: match.address.toLowerCase() };
-  config.wallets[resolved.name] = { address: resolved.address };
+  const resolved = adoptWallet(config, match.name, match.address.toLowerCase());
   await updateConfig((current) => {
-    current.wallets[resolved.name] = { address: resolved.address };
+    adoptWallet(current, resolved.name, resolved.address);
   });
   return resolved;
 }
@@ -171,14 +174,14 @@ async function restoreOwsWallets(config: CliConfig) {
   const restored = normalizeOwsWallets(wallets);
   for (const wallet of restored) {
     if (config.wallets[wallet.name]?.address?.toLowerCase() !== wallet.address) {
-      config.wallets[wallet.name] = { address: wallet.address };
+      adoptWallet(config, wallet.name, wallet.address);
       changed = true;
     }
   }
   if (changed) {
     await updateConfig((current) => {
       for (const wallet of restored) {
-        current.wallets[wallet.name] = { address: wallet.address };
+        adoptWallet(current, wallet.name, wallet.address);
       }
     });
   }
@@ -248,9 +251,9 @@ export async function walletCommand(args: ParsedArgs) {
       }
       throw error;
     }
-    config.wallets[name] = { address: wallet.address };
+    adoptWallet(config, name, wallet.address);
     await updateConfig((current) => {
-      current.wallets[name] = { address: wallet.address };
+      adoptWallet(current, name, wallet.address);
     });
     await printJson({ wallet: { name, address: wallet.address } });
     return;
@@ -440,9 +443,6 @@ function parseUsdMicros(raw: string, source: string) {
   }
   const [whole, fractional = ""] = raw.split(".");
   const micros = BigInt(whole) * 1_000_000n + BigInt(fractional.padEnd(6, "0"));
-  if (micros < 0n) {
-    throw new Error(`${source} must be non-negative (got "${raw}").`);
-  }
   return micros;
 }
 
