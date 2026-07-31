@@ -153,6 +153,7 @@ Passphrases are never stored. Wallets are passphrase-less by default; opt in at 
 ## Contributing
 
 ```bash
+npm run -w @h402/core build
 npm run -w @h402/cli typecheck
 npm run -w @h402/cli lint
 npm run -w @h402/cli test

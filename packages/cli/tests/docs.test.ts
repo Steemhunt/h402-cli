@@ -151,7 +151,18 @@ describe("doc examples stay runnable against the provider-pinned catalog contrac
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");
     expect(text).toContain("strict CAIP-2 `eip155:8453`");
+    expect(text).toContain("matchAsset: (asset)");
+    expect(text).toContain("requireEip3009: true");
+    expect(text).toContain("BASE_USDC_ADDRESS");
     expect(text).toContain("short-form network names");
     expect(text).toContain("supply your own selector");
+  });
+
+  it("documents the core build prerequisite for standalone CLI checks", () => {
+    const text = readFileSync(DOC_FILES["package README.md"], "utf8");
+    const coreBuild = text.indexOf("npm run -w @h402/core build");
+    const cliTypecheck = text.indexOf("npm run -w @h402/cli typecheck");
+    expect(coreBuild).toBeGreaterThan(-1);
+    expect(coreBuild).toBeLessThan(cliTypecheck);
   });
 });
