@@ -244,6 +244,7 @@ export async function walletCommand(args: ParsedArgs) {
       }
       throw error;
     }
+    adoptWallet(config, name, wallet.address);
     await updateConfig((current) => {
       adoptWallet(current, name, wallet.address);
     });

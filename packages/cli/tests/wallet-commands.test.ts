@@ -121,6 +121,8 @@ describe("walletCommand balance/fund wallet selection", () => {
 
   it("persists and prints a newly created wallet", async () => {
     createOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_AGENT });
+    const loaded: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
+    loadConfig.mockResolvedValueOnce(loaded);
 
     await walletCommand(args({ name: "agent" }, "create"));
 
@@ -131,6 +133,9 @@ describe("walletCommand balance/fund wallet selection", () => {
         wallets: { agent: { address: ADDR_AGENT } }
       }
     ]);
+    // The in-memory config loaded at command entry adopts the wallet too, in
+    // memory-then-durable order, matching the by-name/by-address/restore paths.
+    expect(loaded.wallets).toEqual({ agent: { address: ADDR_AGENT } });
     const written = stdout.mock.calls.map((call) => String(call[0])).join("");
     expect(JSON.parse(written)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
   });
