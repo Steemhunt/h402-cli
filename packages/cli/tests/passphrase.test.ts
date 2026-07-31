@@ -3,6 +3,20 @@ import { createPassphrase, signWithWalletPassphrase, walletCommand } from "../sr
 import { assertKnownFlags } from "../src/help";
 import { parseArgs, type ParsedArgs } from "../src/utils";
 
+vi.mock("../src/config.js", () => ({
+  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} })),
+  updateConfig: vi.fn(),
+  backendUrl: () => "https://h402.hunt.town"
+}));
+
+vi.mock("../src/ows.js", () => ({
+  createOwsWallet: vi.fn(),
+  getOwsWallet: vi.fn(),
+  listOwsWallets: vi.fn(),
+  signOwsMessage: vi.fn(),
+  signOwsTypedData: vi.fn()
+}));
+
 function args(flags: Record<string, string | boolean> = {}): ParsedArgs {
   return { positional: [], flags };
 }
