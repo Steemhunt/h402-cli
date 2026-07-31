@@ -16,13 +16,19 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const command = args.positional[0];
 
+  if (!command) {
+    assertTopLevelFlags(args.flags);
+  }
+
   if (flagBoolean(args.flags, "version") || command === "version") {
     await writeStdout(`${getVersion()}\n`);
     return;
   }
 
   if (!command || command === "help") {
-    assertTopLevelFlags(args.flags);
+    if (command === "help") {
+      assertTopLevelFlags(args.flags);
+    }
     await writeStdout(`${topLevelHelp()}\n`);
     return;
   }
