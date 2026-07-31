@@ -1,6 +1,6 @@
 import { assertOk, requestJson } from "./api.js";
 import { CliError } from "./errors.js";
-import { assertConcreteProvider, encodeRouteId, type ParsedArgs } from "./utils.js";
+import { assertConcreteProvider, encodeRouteId, isRecord, mergeH402, type ParsedArgs } from "./utils.js";
 
 export type ProviderSelection = {
   source: "explicit" | "catalog-default";
@@ -32,10 +32,6 @@ const PINNED_COMMAND_FLAGS: Record<SelectionCommand, readonly string[]> = {
 };
 
 const BOOLEAN_PINNED_COMMAND_FLAGS = new Set(["no-passphrase", "no-credit"]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function shellArg(value: string) {
   return /^[A-Za-z0-9_./:@+-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
@@ -144,20 +140,17 @@ export async function resolveProvider(
   command: "call" | "quote",
   flags: ParsedArgs["flags"],
   effectiveMaxUsd?: string
-): Promise<{ selection: ProviderSelection; route?: CatalogRoute }> {
+): Promise<ProviderSelection> {
   const effectiveFlags = {
     ...flags,
     "api-url": apiUrl,
     ...(effectiveMaxUsd === undefined ? {} : { "max-usd": effectiveMaxUsd })
   };
   if (explicitProvider !== undefined) {
-    return { selection: selection(command, routeId, assertConcreteProvider(explicitProvider), "explicit", effectiveFlags) };
+    return selection(command, routeId, assertConcreteProvider(explicitProvider), "explicit", effectiveFlags);
   }
   const { route } = await fetchCatalogRoute(apiUrl, routeId);
-  return {
-    route,
-    selection: selection(command, routeId, route.defaultProvider, "catalog-default", effectiveFlags)
-  };
+  return selection(command, routeId, route.defaultProvider, "catalog-default", effectiveFlags);
 }
 
 export function selectCatalogCandidate(route: CatalogRoute, provider: string) {
@@ -183,11 +176,7 @@ export function explicitShowSelection(apiUrl: string, routeId: string, provider:
 }
 
 export function withProviderSelection(body: unknown, providerSelection: ProviderSelection) {
-  if (isRecord(body)) {
-    const h402 = isRecord(body.h402) ? body.h402 : {};
-    return { ...body, h402: { ...h402, cliProviderSelection: providerSelection } };
-  }
-  return { data: body, h402: { cliProviderSelection: providerSelection } };
+  return mergeH402(body, { cliProviderSelection: providerSelection });
 }
 
 export function withProviderSelectionError(error: unknown, providerSelection: ProviderSelection) {

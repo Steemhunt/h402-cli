@@ -19,6 +19,8 @@ import {
   encodeRouteId,
   flagBoolean,
   flagString,
+  isRecord,
+  mergeH402,
   parseJsonFlag,
   parseQueryFlag,
   printJson,
@@ -105,8 +107,8 @@ export async function createPassphrase(args: ParsedArgs) {
 
 function withIdempotencyKey(error: unknown, idempotencyKey: string) {
   const existingDetail = error instanceof CliError ? error.detail : undefined;
-  const detail = existingDetail && typeof existingDetail === "object" && !Array.isArray(existingDetail)
-    ? { ...(existingDetail as Record<string, unknown>), idempotencyKey }
+  const detail = isRecord(existingDetail)
+    ? { ...existingDetail, idempotencyKey }
     : { idempotencyKey, ...(existingDetail === undefined ? {} : { detail: existingDetail }) };
   const message = `${error instanceof Error ? error.message : String(error)} (idempotency-key: ${idempotencyKey})`;
   return new CliError(message, detail);
@@ -350,6 +352,25 @@ function explicitProviderFlag(flags: ParsedArgs["flags"]) {
   return assertConcreteProvider(provider);
 }
 
+async function parseProxyInvocation(args: ParsedArgs, command: "call" | "quote") {
+  rejectExtraPositionals(
+    args,
+    2,
+    command,
+    `Did you forget --json for a request body or --query for URL parameters? Run: h402 ${command} --help`
+  );
+  const routeId = requireValue(args.positional[1], "route id is required");
+  encodeRouteId(routeId);
+  const body = parseJsonFlag(args.flags);
+  const query = parseQueryFlag(args.flags);
+  const explicitProvider = explicitProviderFlag(args.flags);
+  const method = resolveMethod(args.flags, body !== undefined);
+  rejectQueryOnPost(method, query);
+  const config = await loadConfig();
+  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
+  return { routeId, body, query, explicitProvider, method, config, apiUrl };
+}
+
 export async function searchCommand(args: ParsedArgs) {
   // Validate the required query before any network work.
   const query = requireValue(args.positional.slice(1).join(" ").trim() || undefined, 'search query is required (e.g. h402 search "web search")');
@@ -408,17 +429,8 @@ export async function creditsCommand(args: ParsedArgs) {
 }
 
 export async function quoteCommand(args: ParsedArgs) {
-  rejectExtraPositionals(args, 2, "quote", "Did you forget --json for a request body or --query for URL parameters? Run: h402 quote --help");
-  const routeId = requireValue(args.positional[1], "route id is required");
-  encodeRouteId(routeId);
-  const body = parseJsonFlag(args.flags);
-  const query = parseQueryFlag(args.flags);
-  const explicitProvider = explicitProviderFlag(args.flags);
-  const method = resolveMethod(args.flags, body !== undefined);
-  rejectQueryOnPost(method, query);
-  const config = await loadConfig();
-  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
-  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "quote", args.flags);
+  const { routeId, body, query, explicitProvider, method, apiUrl } = await parseProxyInvocation(args, "quote");
+  const providerSelection = await resolveProvider(apiUrl, routeId, explicitProvider, "quote", args.flags);
   try {
     const result = await requestJson(apiUrl, buildProxyPath(routeId, providerSelection.provider, query), {
       method,
@@ -453,8 +465,7 @@ function parseBaseUsdcMicros(raw: unknown, source: string) {
   return BigInt(raw);
 }
 
-function formatUsdMicros(amount: string | bigint) {
-  const micros = typeof amount === "bigint" ? amount : parseBaseUsdcMicros(amount, "x402 payment amount");
+function formatUsdMicros(micros: bigint) {
   const whole = micros / 1_000_000n;
   const fractional = (micros % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
   return fractional ? `${whole}.${fractional}` : whole.toString();
@@ -470,21 +481,15 @@ function maxUsd(args: ParsedArgs, config: CliConfig) {
 
 function assertUnderMaxUsd(amount: string, cap: ReturnType<typeof maxUsd>) {
   const amountMicros = parseBaseUsdcMicros(amount, "x402 payment amount");
-  if (!cap) return;
-  if (amountMicros > cap.micros) {
+  if (cap && amountMicros > cap.micros) {
     throw new Error(`Payment amount $${formatUsdMicros(amountMicros)} USDC exceeds --max-usd ${cap.raw}; refusing to sign.`);
   }
+  return amountMicros;
 }
 
-function withSignedAmount(body: unknown, accepted: { amount: string }) {
-  const amountMicros = parseBaseUsdcMicros(accepted.amount, "x402 payment amount");
+function withSignedAmount(body: unknown, accepted: { amount: string }, amountMicros: bigint) {
   const signedAmount = { amount: accepted.amount, asset: "USDC", decimals: 6, usd: formatUsdMicros(amountMicros) };
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    const record = body as Record<string, unknown>;
-    const h402 = record.h402 && typeof record.h402 === "object" && !Array.isArray(record.h402) ? (record.h402 as Record<string, unknown>) : {};
-    return { ...record, h402: { ...h402, signedAmount } };
-  }
-  return { data: body, h402: { signedAmount } };
+  return mergeH402(body, { signedAmount });
 }
 
 function authorizationClockFromResponseDate(headers: Headers) {
@@ -521,16 +526,15 @@ function isPaymentSettlementFailure(error: unknown): error is CliError {
 }
 
 function isConclusiveSettlementFailure(error: unknown, idempotencyKey: string) {
-  if (!isPaymentSettlementFailure(error) || !error.detail || typeof error.detail !== "object") {
+  if (!isPaymentSettlementFailure(error) || !isRecord(error.detail)) {
     return false;
   }
-  const backendError = (error.detail as { error?: unknown }).error;
+  const backendError = error.detail.error;
   return (
-    backendError !== null &&
-    typeof backendError === "object" &&
-    (backendError as { idempotencyKey?: unknown }).idempotencyKey === idempotencyKey &&
-    (backendError as { paid?: unknown }).paid === false &&
-    (backendError as { safeToStartNewCall?: unknown }).safeToStartNewCall === true
+    isRecord(backendError) &&
+    backendError.idempotencyKey === idempotencyKey &&
+    backendError.paid === false &&
+    backendError.safeToStartNewCall === true
   );
 }
 
@@ -555,20 +559,11 @@ function automaticReplacementRefused(response: ApiResponse<unknown>, idempotency
 }
 
 export async function callCommand(args: ParsedArgs) {
-  rejectExtraPositionals(args, 2, "call", "Did you forget --json for a request body or --query for URL parameters? Run: h402 call --help");
-  const routeId = requireValue(args.positional[1], "route id is required");
-  encodeRouteId(routeId);
-  const body = parseJsonFlag(args.flags);
-  const query = parseQueryFlag(args.flags);
-  const explicitProvider = explicitProviderFlag(args.flags);
-  const method = resolveMethod(args.flags, body !== undefined);
-  rejectQueryOnPost(method, query);
+  const { routeId, body, query, explicitProvider, method, config, apiUrl } = await parseProxyInvocation(args, "call");
   const idempotencyKey = flagString(args.flags, "idempotency-key", randomUUID()) as string;
-  const config = await loadConfig();
-  const apiUrl = backendUrl(config, flagString(args.flags, "api-url"));
   const paymentCap = maxUsd(args, config);
   const token = config.sessions[apiUrl];
-  const { selection: providerSelection } = await resolveProvider(apiUrl, routeId, explicitProvider, "call", args.flags, paymentCap?.raw);
+  const providerSelection = await resolveProvider(apiUrl, routeId, explicitProvider, "call", args.flags, paymentCap?.raw);
 
   let signedRequestSent = false;
   try {
@@ -602,7 +597,7 @@ export async function callCommand(args: ParsedArgs) {
     }
 
     const accepted = selectBaseUsdcRequirement(paymentRequired);
-    assertUnderMaxUsd(accepted.amount, paymentCap);
+    const amountMicros = assertUnderMaxUsd(accepted.amount, paymentCap);
     const { name, address: walletAddress } = await resolveSigningWallet(args, config);
     const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>
       createPaymentSignatureHeader({
@@ -633,7 +628,7 @@ export async function callCommand(args: ParsedArgs) {
       }
     }
 
-    await printJson(withProviderSelection(withSignedAmount(assertOk(paid), accepted), providerSelection));
+    await printJson(withProviderSelection(withSignedAmount(assertOk(paid), accepted, amountMicros), providerSelection));
   } catch (error) {
     const settlementRiskIsUnresolved =
       (signedRequestSent || isPaymentSettlementFailure(error)) && !isConclusiveSettlementFailure(error, idempotencyKey);

@@ -3,6 +3,7 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import { acquireConfigLock } from "./config-lock.js";
+import { isRecord } from "./utils.js";
 
 export type CliConfig = {
   backendUrl: string;
@@ -27,17 +28,13 @@ function normalizeConfig(parsed: Record<string, unknown>): CliConfig {
   const defaults = defaultConfig();
   const normalized: CliConfig = {
     backendUrl: typeof parsed.backendUrl === "string" ? parsed.backendUrl : defaults.backendUrl,
-    sessions: isPlainObject(parsed.sessions) ? (parsed.sessions as Record<string, string>) : {},
-    wallets: isPlainObject(parsed.wallets) ? (parsed.wallets as CliConfig["wallets"]) : {}
+    sessions: isRecord(parsed.sessions) ? (parsed.sessions as Record<string, string>) : {},
+    wallets: isRecord(parsed.wallets) ? (parsed.wallets as CliConfig["wallets"]) : {}
   };
   if (typeof parsed.maxUsd === "string") {
     normalized.maxUsd = parsed.maxUsd;
   }
   return normalized;
-}
-
-function isPlainObject(value: unknown): boolean {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function tightenConfigPermissions(file: string) {
@@ -64,13 +61,13 @@ async function readConfigFile(file: string): Promise<CliConfig | undefined> {
   }
   // Surface malformed config instead of overwriting it and losing the session
   // tokens and wallet mappings it holds.
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     throw new Error(`h402 config at ${file} is not a valid config object. Fix or remove it (it holds your session tokens and known wallets).`);
   }
   // Normalize to the CliConfig shape so a sparse or partial file (e.g. `{}` or a
   // missing/mistyped sessions/wallets key) yields a usable config instead of
   // crashing later when a command reads config.sessions / config.wallets.
-  return normalizeConfig(parsed as Record<string, unknown>);
+  return normalizeConfig(parsed);
 }
 
 export async function loadConfig(): Promise<CliConfig> {
