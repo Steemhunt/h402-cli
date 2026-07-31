@@ -1,7 +1,21 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPassphrase, signWithWalletPassphrase, walletCommand } from "../src/commands";
 import { assertKnownFlags } from "../src/help";
 import { parseArgs, type ParsedArgs } from "../src/utils";
+
+vi.mock("../src/config.js", () => ({
+  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} })),
+  updateConfig: vi.fn(),
+  backendUrl: () => "https://h402.hunt.town"
+}));
+
+vi.mock("../src/ows.js", () => ({
+  createOwsWallet: vi.fn(),
+  getOwsWallet: vi.fn(),
+  listOwsWallets: vi.fn(),
+  signOwsMessage: vi.fn(),
+  signOwsTypedData: vi.fn()
+}));
 
 function args(flags: Record<string, string | boolean> = {}): ParsedArgs {
   return { positional: [], flags };
@@ -9,8 +23,12 @@ function args(flags: Record<string, string | boolean> = {}): ParsedArgs {
 
 const DECRYPTION_FAILED = new Error("decryption failed: aead::Error");
 
+beforeEach(() => {
+  vi.stubEnv("H402_WALLET_PASSPHRASE", undefined);
+});
+
 afterEach(() => {
-  delete process.env.H402_WALLET_PASSPHRASE;
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 

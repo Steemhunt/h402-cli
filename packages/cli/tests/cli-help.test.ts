@@ -227,6 +227,38 @@ describe("assertTopLevelFlags", () => {
       expect(JSON.parse(result.stderr), argv.join(" ")).toMatchObject({ error: { message } });
     }
   });
+
+  it("validates the version word form and rejects --version on commands", () => {
+    const entrypoint = path.resolve(import.meta.dirname, "../src/index.ts");
+    const cases = [
+      { argv: ["version", "--bogus"], message: "Unknown flag: --bogus. Run: h402 --help" },
+      { argv: ["version", "wallet"], message: 'Unexpected positional argument: "wallet". Run: h402 --help' },
+      { argv: ["call", "ai/news", "--version"], message: "Unknown flag: --version. Run: h402 call --help" },
+      { argv: ["call", "ai/news", "--version", "--help"], message: "Unknown flag: --version. Run: h402 call --help" }
+    ];
+
+    for (const { argv, message } of cases) {
+      const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, ...argv], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: tempHome }
+      });
+      expect(result.status, argv.join(" ")).toBe(1);
+      expect(result.stdout, argv.join(" ")).toBe("");
+      expect(JSON.parse(result.stderr), argv.join(" ")).toMatchObject({ error: { message } });
+    }
+  });
+
+  it("keeps the version word form on its stdout success path", () => {
+    const entrypoint = path.resolve(import.meta.dirname, "../src/index.ts");
+    const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, "version"], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: tempHome }
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe(`${getVersion()}\n`);
+    expect(result.stderr).toBe("");
+  });
 });
 
 describe("required-arg validation", () => {

@@ -1,7 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveSigningWallet } from "../src/commands";
 import type { CliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
+
+const { getOwsWallet, listOwsWallets } = vi.hoisted(() => ({
+  getOwsWallet: vi.fn().mockRejectedValue(new Error("wallet not found")),
+  listOwsWallets: vi.fn().mockResolvedValue([])
+}));
+
+vi.mock("../src/config.js", () => ({
+  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} })),
+  updateConfig: vi.fn(),
+  backendUrl: () => "https://h402.hunt.town"
+}));
+
+vi.mock("../src/ows.js", () => ({
+  createOwsWallet: vi.fn(),
+  getOwsWallet,
+  listOwsWallets,
+  signOwsMessage: vi.fn(),
+  signOwsTypedData: vi.fn()
+}));
 
 const ADDR_H402 = "0x1111111111111111111111111111111111111111";
 const ADDR_ALT = "0x2222222222222222222222222222222222222222";

@@ -18,9 +18,17 @@ async function main() {
 
   if (!command) {
     assertTopLevelFlags(args.flags);
-  }
-
-  if (flagBoolean(args.flags, "version") || command === "version") {
+    if (flagBoolean(args.flags, "version")) {
+      await writeStdout(`${getVersion()}\n`);
+      return;
+    }
+  } else if (command === "version") {
+    assertTopLevelFlags(args.flags);
+    const extra = args.positional.slice(1);
+    if (extra.length > 0) {
+      const label = extra.length === 1 ? "Unexpected positional argument" : "Unexpected positional arguments";
+      throw new Error(`${label}: ${extra.map((value) => JSON.stringify(value)).join(", ")}. Run: h402 --help`);
+    }
     await writeStdout(`${getVersion()}\n`);
     return;
   }
@@ -39,14 +47,14 @@ async function main() {
 
   const commandPath = resolveCommandPath(args.positional);
 
+  // Reject typo'd/unsupported flags before doing any work (a silently ignored
+  // --idempotency-key on a paid call could double-charge on retry).
+  assertKnownFlags(commandPath, args.flags);
+
   if (flagBoolean(args.flags, "help")) {
     await writeStdout(`${commandHelp(commandPath)}\n`);
     return;
   }
-
-  // Reject typo'd/unsupported flags before doing any work (a silently ignored
-  // --idempotency-key on a paid call could double-charge on retry).
-  assertKnownFlags(commandPath, args.flags);
 
   if (command === "wallet") return walletCommand(args);
   if (command === "auth") return authCommand(args);
