@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedArgs } from "../src/utils";
+import { configMockFactory, owsMockFactory, printed } from "./helpers";
 
 type MockCliConfig = { backendUrl: string; sessions: Record<string, string>; wallets: Record<string, { address?: string }> };
 
@@ -30,13 +31,7 @@ const { createOwsWallet, getOwsWallet, listOwsWallets, getBaseUsdcBalance, loadC
   };
 });
 
-vi.mock("../src/ows.js", () => ({
-  createOwsWallet,
-  getOwsWallet,
-  listOwsWallets,
-  signOwsMessage: vi.fn(),
-  signOwsTypedData: vi.fn()
-}));
+vi.mock("../src/ows.js", () => owsMockFactory({ createOwsWallet, getOwsWallet, listOwsWallets }));
 
 vi.mock("../src/base-usdc-balance.js", () => ({
   BASE_USDC_BALANCE_NETWORK: { name: "base", chainId: 8453 },
@@ -44,11 +39,7 @@ vi.mock("../src/base-usdc-balance.js", () => ({
   getBaseUsdcBalance
 }));
 
-vi.mock("../src/config.js", () => ({
-  loadConfig,
-  updateConfig,
-  backendUrl: () => "https://h402.hunt.town"
-}));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig }));
 
 const { walletCommand } = await import("../src/commands");
 
@@ -93,8 +84,7 @@ describe("walletCommand balance/fund wallet selection", () => {
 
   it("prints structured Base USDC balance", async () => {
     await walletCommand(args({ name: "agent" }, "balance"));
-    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(JSON.parse(written)).toEqual({
+    expect(printed(stdout)).toEqual({
       wallet: { name: "agent", address: ADDR_AGENT },
       network: { name: "base", chainId: 8453 },
       asset: { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", decimals: 6 },
@@ -105,8 +95,7 @@ describe("walletCommand balance/fund wallet selection", () => {
   it("prints Base USDC funding instructions without invoking the broken OWS MoonPay flow", async () => {
     await walletCommand(args({ wallet: ADDR_AGENT }, "fund"));
 
-    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(JSON.parse(written)).toEqual({
+    expect(printed(stdout)).toEqual({
       wallet: { name: "agent", address: ADDR_AGENT },
       network: "base",
       token: "USDC",
@@ -136,8 +125,7 @@ describe("walletCommand balance/fund wallet selection", () => {
     // The in-memory config loaded at command entry adopts the wallet too, in
     // memory-then-durable order, matching the by-name/by-address/restore paths.
     expect(loaded.wallets).toEqual({ agent: { address: ADDR_AGENT } });
-    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(JSON.parse(written)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
+    expect(printed(stdout)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
   });
 
   it("re-adopts an OWS wallet by address when the h402 config mapping is missing", async () => {
@@ -153,8 +141,7 @@ describe("walletCommand balance/fund wallet selection", () => {
         wallets: { alt: { address: ADDR_ALT } }
       }
     ]);
-    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(JSON.parse(written)).toEqual({ wallet: { name: "alt", address: ADDR_ALT } });
+    expect(printed(stdout)).toEqual({ wallet: { name: "alt", address: ADDR_ALT } });
   });
 
   it("accepts --name and --wallet together when they agree", async () => {
@@ -185,8 +172,7 @@ describe("walletCommand balance/fund wallet selection", () => {
         wallets: { agent: { address: ADDR_AGENT } }
       }
     ]);
-    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(JSON.parse(written)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
+    expect(printed(stdout)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
   });
 
   it("rejects --wallet mismatches even after re-adopting an OWS wallet by name", async () => {
@@ -206,8 +192,7 @@ describe("walletCommand balance/fund wallet selection", () => {
     await walletCommand(args({}, "list"));
 
     expect(updateConfig).not.toHaveBeenCalled();
-    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(JSON.parse(written)).toEqual({
+    expect(printed(stdout)).toEqual({
       wallets: [
         { name: "agent", address: ADDR_AGENT },
         { name: "alt", address: ADDR_ALT }
@@ -232,8 +217,7 @@ describe("walletCommand balance/fund wallet selection", () => {
         wallets: { agent: { address: ADDR_AGENT }, alt: { address: ADDR_ALT } }
       }
     ]);
-    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
-    expect(JSON.parse(written)).toEqual({
+    expect(printed(stdout)).toEqual({
       wallets: [
         { name: "agent", address: ADDR_AGENT },
         { name: "alt", address: ADDR_ALT }

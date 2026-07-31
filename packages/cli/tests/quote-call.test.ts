@@ -1,19 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CliError, errorEnvelope } from "../src/errors";
 import type { ParsedArgs } from "../src/utils";
+import { ADDR, configMockFactory, res } from "./helpers";
 
-const { ADDR } = vi.hoisted(() => ({ ADDR: "0x1111111111111111111111111111111111111111" }));
+const { loadConfig } = vi.hoisted(() => ({ loadConfig: vi.fn() }));
 
-vi.mock("../src/config.js", () => ({
-  loadConfig: vi.fn(async () => ({ backendUrl: "https://test.example", sessions: {}, wallets: { h402: { address: ADDR } } })),
-  backendUrl: () => "https://test.example"
-}));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig }));
 
 const { quoteCommand, callCommand, searchCommand } = await import("../src/commands");
-
-function res(status: number, body: unknown, headers: Record<string, string> = {}) {
-  return { status, text: async () => (body === undefined ? "" : JSON.stringify(body)), headers: new Headers(headers) };
-}
 
 function stubFetch(status: number, body: unknown, headers: Record<string, string> = {}) {
   vi.stubGlobal("fetch", vi.fn(async () => res(status, body, headers)));
@@ -30,11 +24,13 @@ describe("quote/call exit codes on backend responses", () => {
 
   beforeEach(() => {
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {}, wallets: { h402: { address: ADDR } } });
   });
 
   afterEach(() => {
     stdout.mockRestore();
     vi.unstubAllGlobals();
+    loadConfig.mockReset();
   });
 
   for (const status of [400, 404, 500]) {

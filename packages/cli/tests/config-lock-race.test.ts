@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { deadOwner } from "./helpers";
 
 const fsMock = vi.hoisted(() => ({
   readFile: vi.fn()
@@ -22,13 +22,6 @@ function deferred() {
     resolve = done;
   });
   return { promise, resolve };
-}
-
-async function deadOwner(token: string) {
-  const child = spawn(process.execPath, ["--version"], { stdio: "ignore" });
-  const pid = child.pid as number;
-  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  return { version: 3, pid, hostname: os.hostname(), createdAt: new Date().toISOString(), token };
 }
 
 describe("config lock reclamation ordering", () => {
