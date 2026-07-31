@@ -203,6 +203,30 @@ describe("assertTopLevelFlags", () => {
       expect(JSON.parse(result.stderr)).toMatchObject({ error: { message } });
     }
   });
+
+  it("rejects empty equals-form required flags through the CLI dispatch path", () => {
+    const entrypoint = path.resolve(import.meta.dirname, "../src/index.ts");
+    const cases = [
+      {
+        argv: ["wallet", "create", "--name="],
+        message: "Flag --name requires a value. Run: h402 wallet create --help"
+      },
+      {
+        argv: ["call", "ai/news", "--idempotency-key="],
+        message: "Flag --idempotency-key requires a value. Run: h402 call --help"
+      }
+    ];
+
+    for (const { argv, message } of cases) {
+      const result = spawnSync(process.execPath, ["--import", "tsx", entrypoint, ...argv], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: tempHome }
+      });
+      expect(result.status, argv.join(" ")).toBe(1);
+      expect(result.stdout, argv.join(" ")).toBe("");
+      expect(JSON.parse(result.stderr), argv.join(" ")).toMatchObject({ error: { message } });
+    }
+  });
 });
 
 describe("required-arg validation", () => {
