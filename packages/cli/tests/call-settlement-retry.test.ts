@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedArgs } from "../src/utils";
-import { ADDR, BASE_USDC, configMockFactory, owsMockFactory, res } from "./helpers";
+import { ADDR, BASE_USDC, configMockFactory, owsMockFactory, res as response } from "./helpers";
 
 const IDEMPOTENCY_KEY = "idem-pending-43";
 const REPLACEMENT_KEY = "idem-replacement-43";
@@ -10,7 +10,7 @@ const { loadConfig, signOwsTypedData } = vi.hoisted(() => ({
   signOwsTypedData: vi.fn(async () => `0x${"11".repeat(65)}` as `0x${string}`)
 }));
 
-vi.mock("../src/config.js", () => configMockFactory({ loadConfig }));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, backendUrl: "https://test.example" }));
 vi.mock("../src/ows.js", () => owsMockFactory({ signOwsTypedData }));
 
 const { callCommand } = await import("../src/commands");
@@ -49,6 +49,11 @@ function backendError(code: string, message: string) {
 
 function pending() {
   return backendError("payment_settlement_pending", "Payment settlement status could not be confirmed yet.");
+}
+
+function res(status: number, body: unknown, headers: Record<string, string> = {}) {
+  const statusText = status === 200 ? "OK" : status === 409 ? "Conflict" : "Payment Required";
+  return response(status, body, headers, statusText);
 }
 
 function requestHeaders(fetch: ReturnType<typeof vi.fn>, index: number) {

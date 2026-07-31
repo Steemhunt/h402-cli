@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CliError, errorEnvelope } from "../src/errors";
 import type { ParsedArgs } from "../src/utils";
-import { configMockFactory, owsMockFactory, printed, res } from "./helpers";
+import { owsMockFactory, printed, res as response } from "./helpers";
 
 const { loadConfig } = vi.hoisted(() => ({ loadConfig: vi.fn() }));
-vi.mock("../src/config.js", () => configMockFactory({ loadConfig }));
+vi.mock("../src/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/config.js")>()),
+  loadConfig,
+  updateConfig: vi.fn()
+}));
 vi.mock("../src/ows.js", () => owsMockFactory());
 
 const { callCommand, quoteCommand, searchCommand, showCommand } = await import("../src/commands");
@@ -48,6 +52,10 @@ const route = {
     }
   ]
 };
+
+function res(status: number, body: unknown, headers: Record<string, string> = {}) {
+  return response(status, body, headers, status === 200 ? "OK" : "Gone");
+}
 
 function args(command: string, flags: ParsedArgs["flags"] = {}): ParsedArgs {
   return { positional: [command, "web/search"], flags };

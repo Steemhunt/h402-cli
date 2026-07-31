@@ -11,7 +11,7 @@ const { loadConfig, signOwsTypedData } = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/config.js", () => configMockFactory({ loadConfig }));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, backendUrl: "https://test.example" }));
 vi.mock("../src/ows.js", () => owsMockFactory({ signOwsTypedData }));
 
 const { callCommand } = await import("../src/commands");

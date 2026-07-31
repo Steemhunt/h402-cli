@@ -5,7 +5,7 @@ import { ADDR, configMockFactory, res } from "./helpers";
 
 const { loadConfig } = vi.hoisted(() => ({ loadConfig: vi.fn() }));
 
-vi.mock("../src/config.js", () => configMockFactory({ loadConfig }));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, backendUrl: "https://test.example" }));
 
 const { quoteCommand, callCommand, searchCommand } = await import("../src/commands");
 

@@ -60,5 +60,6 @@ describe("Base USDC balance RPC", () => {
   it("uses at least two HTTPS endpoints for the public Base RPC quorum", () => {
     expect(BASE_RPC_URLS.length).toBeGreaterThanOrEqual(2);
     expect(BASE_RPC_URLS.every((url) => new URL(url).protocol === "https:")).toBe(true);
+    expect(new Set(BASE_RPC_URLS).size).toBe(BASE_RPC_URLS.length);
   });
 });

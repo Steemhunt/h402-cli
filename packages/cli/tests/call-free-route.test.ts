@@ -9,7 +9,7 @@ const { loadConfig, updateConfig, getOwsWallet, listOwsWallets } = vi.hoisted(()
   listOwsWallets: vi.fn()
 }));
 
-vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig }));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig, backendUrl: "https://test.example" }));
 vi.mock("../src/ows.js", () => owsMockFactory({ getOwsWallet, listOwsWallets }));
 
 const { callCommand } = await import("../src/commands");

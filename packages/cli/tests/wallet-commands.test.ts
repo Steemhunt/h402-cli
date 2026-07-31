@@ -39,7 +39,7 @@ vi.mock("../src/base-usdc-balance.js", () => ({
   getBaseUsdcBalance
 }));
 
-vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig }));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig, backendUrl: "https://h402.hunt.town" }));
 
 const { walletCommand } = await import("../src/commands");
 

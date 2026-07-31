@@ -5,11 +5,10 @@ import { vi } from "vitest";
 export const ADDR = "0x1111111111111111111111111111111111111111";
 export const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 
-export function res(status: number, body: unknown, headers: Record<string, string> = {}) {
-  const statusText = new Response(null, { status }).statusText;
+export function res(status: number, body: unknown, headers: Record<string, string> = {}, statusText?: string) {
   return {
     status,
-    statusText,
+    ...(statusText === undefined ? {} : { statusText }),
     text: async () => (body === undefined ? "" : JSON.stringify(body)),
     headers: new Headers(headers)
   };
@@ -19,12 +18,11 @@ export function printed(spy: ReturnType<typeof vi.spyOn>) {
   return JSON.parse(spy.mock.calls.map((call) => String(call[0])).join(""));
 }
 
-export function configMockFactory(mocks: { loadConfig: unknown; updateConfig?: unknown }) {
+export function configMockFactory(mocks: { loadConfig: unknown; updateConfig?: unknown; backendUrl: string }) {
   return {
     loadConfig: mocks.loadConfig,
     updateConfig: mocks.updateConfig ?? vi.fn(),
-    backendUrl: (config: { backendUrl: string }, apiUrlFlag?: string) =>
-      (apiUrlFlag ?? process.env.H402_API_URL ?? config.backendUrl).replace(/\/$/, "")
+    backendUrl: () => mocks.backendUrl
   };
 }
 
