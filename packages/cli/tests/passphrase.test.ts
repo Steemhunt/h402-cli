@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPassphrase, signWithWalletPassphrase, walletCommand } from "../src/commands";
 import { assertKnownFlags } from "../src/help";
 import { parseArgs, type ParsedArgs } from "../src/utils";
@@ -23,8 +23,12 @@ function args(flags: Record<string, string | boolean> = {}): ParsedArgs {
 
 const DECRYPTION_FAILED = new Error("decryption failed: aead::Error");
 
+beforeEach(() => {
+  vi.stubEnv("H402_WALLET_PASSPHRASE", undefined);
+});
+
 afterEach(() => {
-  delete process.env.H402_WALLET_PASSPHRASE;
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
