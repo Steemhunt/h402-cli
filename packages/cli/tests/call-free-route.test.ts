@@ -1,38 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedArgs } from "../src/utils";
+import { ADDR, BASE_USDC, configMockFactory, owsMockFactory, res } from "./helpers";
 
-const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-
-const { loadConfig, updateConfig, getOwsWallet, listOwsWallets, ADDR } = vi.hoisted(() => ({
+const { loadConfig, updateConfig, getOwsWallet, listOwsWallets } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
   updateConfig: vi.fn(),
   getOwsWallet: vi.fn(),
-  listOwsWallets: vi.fn(),
-  ADDR: "0x1111111111111111111111111111111111111111"
+  listOwsWallets: vi.fn()
 }));
 
-vi.mock("../src/config.js", () => ({
-  loadConfig,
-  updateConfig,
-  backendUrl: () => "https://test.example"
-}));
-
-vi.mock("../src/ows.js", () => ({
-  createOwsWallet: vi.fn(),
-  getOwsWallet,
-  listOwsWallets,
-  signOwsMessage: vi.fn(),
-  signOwsTypedData: vi.fn()
-}));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig, backendUrl: "https://test.example" }));
+vi.mock("../src/ows.js", () => owsMockFactory({ getOwsWallet, listOwsWallets }));
 
 const { callCommand } = await import("../src/commands");
 
 function args(flags: ParsedArgs["flags"] = {}): ParsedArgs {
   return { positional: ["call", "ai/image-generate-async-status"], flags: { provider: "stablestudio-image", ...flags } };
-}
-
-function res(status: number, body: unknown, headers: Record<string, string> = {}) {
-  return { status, text: async () => (body === undefined ? "" : JSON.stringify(body)), headers: new Headers(headers) };
 }
 
 describe("callCommand free routes", () => {

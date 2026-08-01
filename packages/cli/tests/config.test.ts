@@ -5,20 +5,12 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { backendUrl, loadConfig, updateConfig, type CliConfig } from "../src/config";
+import { deadOwner } from "./helpers";
 
 const PROD_URL = "https://h402.hunt.town";
 
 function configWith(backend?: string): CliConfig {
   return { backendUrl: backend as string, sessions: {}, wallets: {} };
-}
-
-// A same-host owner whose PID is proven dead: spawn a real child, let it exit,
-// and record its now-free PID. Works on every supported platform.
-async function deadOwner(token: string) {
-  const child = spawn(process.execPath, ["--version"], { stdio: "ignore" });
-  const pid = child.pid as number;
-  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  return { version: 3, pid, hostname: os.hostname(), createdAt: new Date().toISOString(), token };
 }
 
 describe("backendUrl resolution", () => {

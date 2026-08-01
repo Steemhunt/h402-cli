@@ -1,21 +1,14 @@
-import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { deadOwner } from "./helpers";
 
 vi.mock("fs-native-extensions", () => {
   throw Object.assign(new Error("native addon unavailable"), { code: "ERR_DLOPEN_FAILED" });
 });
 
 const { acquireConfigLock } = await import("../src/config-lock");
-
-async function deadOwner(token: string) {
-  const child = spawn(process.execPath, ["--version"], { stdio: "ignore" });
-  const pid = child.pid as number;
-  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  return { version: 3, pid, hostname: os.hostname(), createdAt: new Date().toISOString(), token };
-}
 
 describe("config lock reclamation guard loading", () => {
   const roots: string[] = [];

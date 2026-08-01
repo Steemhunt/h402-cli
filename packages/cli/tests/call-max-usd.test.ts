@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
+import { ADDR, BASE_USDC, configMockFactory, owsMockFactory, printed, res } from "./helpers";
 
-const ADDR = "0x1111111111111111111111111111111111111111";
-const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const { loadConfig, signOwsTypedData } = vi.hoisted(() => {
   const signature = `0x${"11".repeat(65)}` as `0x${string}`;
   return {
@@ -12,19 +11,8 @@ const { loadConfig, signOwsTypedData } = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/config.js", () => ({
-  loadConfig,
-  updateConfig: vi.fn(),
-  backendUrl: () => "https://test.example"
-}));
-
-vi.mock("../src/ows.js", () => ({
-  createOwsWallet: vi.fn(),
-  getOwsWallet: vi.fn(),
-  listOwsWallets: vi.fn(),
-  signOwsMessage: vi.fn(),
-  signOwsTypedData
-}));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, backendUrl: "https://test.example" }));
+vi.mock("../src/ows.js", () => owsMockFactory({ signOwsTypedData }));
 
 const { callCommand } = await import("../src/commands");
 
@@ -57,10 +45,6 @@ function challenge(amount: unknown) {
   };
 }
 
-function res(status: number, body: unknown, headers: Record<string, string> = {}) {
-  return { status, text: async () => JSON.stringify(body), headers: new Headers(headers) };
-}
-
 describe("callCommand --max-usd", () => {
   let stdout: ReturnType<typeof vi.spyOn>;
 
@@ -86,8 +70,8 @@ describe("callCommand --max-usd", () => {
     await callCommand(args({ "max-usd": "0.05" }));
 
     expect(signOwsTypedData).toHaveBeenCalled();
-    const printed = JSON.parse(stdout.mock.calls.map((call) => String(call[0])).join(""));
-    expect(printed.h402).toMatchObject({
+    const output = printed(stdout);
+    expect(output.h402).toMatchObject({
       provider: "demo",
       paymentTransaction: "0xabc",
       signedAmount: { amount: "50000", asset: "USDC", decimals: 6, usd: "0.05" }
@@ -103,8 +87,7 @@ describe("callCommand --max-usd", () => {
 
     await callCommand(args());
 
-    const printed = JSON.parse(stdout.mock.calls.map((call) => String(call[0])).join(""));
-    expect(printed.h402.signedAmount).toEqual({ amount: "1234567", asset: "USDC", decimals: 6, usd: "1.234567" });
+    expect(printed(stdout).h402.signedAmount).toEqual({ amount: "1234567", asset: "USDC", decimals: 6, usd: "1.234567" });
   });
 
   it("derives the payment authorization clock from the first response Date header", async () => {

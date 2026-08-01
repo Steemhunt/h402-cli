@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CliError, errorEnvelope } from "../src/errors";
 import type { ParsedArgs } from "../src/utils";
+import { owsMockFactory, printed, res as response } from "./helpers";
 
 const { loadConfig } = vi.hoisted(() => ({ loadConfig: vi.fn() }));
 vi.mock("../src/config.js", async (importOriginal) => ({
@@ -8,13 +9,7 @@ vi.mock("../src/config.js", async (importOriginal) => ({
   loadConfig,
   updateConfig: vi.fn()
 }));
-vi.mock("../src/ows.js", () => ({
-  createOwsWallet: vi.fn(),
-  getOwsWallet: vi.fn(),
-  listOwsWallets: vi.fn(),
-  signOwsMessage: vi.fn(),
-  signOwsTypedData: vi.fn()
-}));
+vi.mock("../src/ows.js", () => owsMockFactory());
 
 const { callCommand, quoteCommand, searchCommand, showCommand } = await import("../src/commands");
 
@@ -59,13 +54,11 @@ const route = {
 };
 
 function res(status: number, body: unknown, headers: Record<string, string> = {}) {
-  return { status, statusText: status === 200 ? "OK" : "Gone", text: async () => JSON.stringify(body), headers: new Headers(headers) };
+  return response(status, body, headers, status === 200 ? "OK" : "Gone");
 }
+
 function args(command: string, flags: ParsedArgs["flags"] = {}): ParsedArgs {
   return { positional: [command, "web/search"], flags };
-}
-function printed(spy: ReturnType<typeof vi.spyOn>) {
-  return JSON.parse(spy.mock.calls.map((call) => String(call[0])).join(""));
 }
 
 const challenge = {

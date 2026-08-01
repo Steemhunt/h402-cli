@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
+import { configMockFactory, owsMockFactory } from "./helpers";
 
 const { loadConfig, updateConfig, signOwsMessage, updatedConfigs, ADDR } = vi.hoisted(() => {
   const ADDR = "0x1111111111111111111111111111111111111111";
@@ -27,19 +28,14 @@ const { loadConfig, updateConfig, signOwsMessage, updatedConfigs, ADDR } = vi.ho
   };
 });
 
-vi.mock("../src/config.js", () => ({
-  loadConfig,
-  updateConfig,
-  backendUrl: () => "https://test.example"
-}));
-
-vi.mock("../src/ows.js", () => ({
-  createOwsWallet: vi.fn(),
-  getOwsWallet: vi.fn(async () => ({ name: "h402", address: ADDR })),
-  listOwsWallets: vi.fn(async () => []),
-  signOwsMessage,
-  signOwsTypedData: vi.fn()
-}));
+vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig, backendUrl: "https://test.example" }));
+vi.mock("../src/ows.js", () =>
+  owsMockFactory({
+    getOwsWallet: vi.fn(async () => ({ name: "h402", address: ADDR })),
+    listOwsWallets: vi.fn(async () => []),
+    signOwsMessage
+  })
+);
 
 const { authCommand } = await import("../src/commands");
 
@@ -84,10 +80,7 @@ describe("authCommand", () => {
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(updatedConfigs[0]).toEqual(expect.objectContaining({ sessions: { "https://test.example": "secret-token" } }));
-    const calls = stdout.mock.calls as unknown[][];
-    const written = calls.map((call) => String(call[0])).join("");
-    expect(written).toContain(ADDR);
-    expect(written).toContain("expiresAt");
+    const written = stdout.mock.calls.map((call) => String(call[0])).join("");
     expect(written).not.toContain("secret-token");
     expect(JSON.parse(written)).toEqual({ session: { address: ADDR, expiresAt: "2026-07-05T00:00:00.000Z" } });
   });
