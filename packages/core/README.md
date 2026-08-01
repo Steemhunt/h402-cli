@@ -15,12 +15,12 @@ npm install @h402/core
 
 ## What's inside
 
-- **Constants** — `X402_VERSION`, `BASE_NETWORK`, `BASE_CHAIN_ID`, the USDC EIP-712 domain (`USDC_EIP712_NAME`, `USDC_EIP712_VERSION`, `USDC_DECIMALS`), and the `transferWithAuthorizationTypes` struct.
+- **Constants** — `X402_VERSION`, `BASE_NETWORK`, `BASE_CHAIN_ID`, `BASE_USDC_ADDRESS`, the USDC EIP-712 domain (`USDC_EIP712_NAME`, `USDC_EIP712_VERSION`, `USDC_DECIMALS`), and the `transferWithAuthorizationTypes` struct.
 - **Types** — `X402PaymentRequired`, `X402PaymentRequirements`, `X402PaymentPayload`, `X402Settlement`, and the `h402-credit` / `h402-route` extensions.
 - **Headers** — `encodeX402Header` / `decodeX402Header`, `paymentRequiredFromResponse`, `parsePaymentRequiredHeader`, `parsePaymentSignatureHeader`, plus the `X402_HEADERS` names.
 - **EIP-3009** — `buildTransferAuthorization`, `createNonce`, `selectExactRequirement`.
 
-> `selectExactRequirement` is intentionally h402-opinionated: it selects the first Base USDC `exact` requirement on strict CAIP-2 `eip155:8453`, matching h402's canonical challenges. It deliberately does not replicate the h402 server's inbound tolerance for non-h402 x402 providers, such as short-form network names (`base`/`8453`) or cheapest-of-many menus. If you integrate against a non-h402 x402 server with those shapes, build on the header/types/EIP-3009 primitives and supply your own selector.
+> `selectExactRequirement` is intentionally h402-opinionated about scheme and network: by default it selects the first `exact` requirement on strict CAIP-2 `eip155:8453`, but it does not pin the asset or transfer method unless you pass `matchAsset` / `requireEip3009`. It deliberately does not replicate the h402 server's inbound tolerance for non-h402 x402 providers, such as short-form network names (`base`/`8453`) or cheapest-of-many menus. If you integrate against a non-h402 x402 server with those shapes, build on the header/types/EIP-3009 primitives and supply your own selector.
 
 ## Usage
 
@@ -31,13 +31,17 @@ import {
   selectExactRequirement,
   buildTransferAuthorization,
   encodeX402Header,
+  BASE_USDC_ADDRESS,
   X402_VERSION,
   type X402PaymentRequired
 } from "@h402/core";
 
 // `challenge` comes from the 402 response (PAYMENT-REQUIRED header or body).
 function payment(challenge: X402PaymentRequired, from: `0x${string}`, signTypedData: (td: unknown) => Promise<string>) {
-  const requirement = selectExactRequirement(challenge); // the Base USDC "exact" requirement
+  const requirement = selectExactRequirement(challenge, {
+    matchAsset: (asset) => typeof asset === "string" && asset.toLowerCase() === BASE_USDC_ADDRESS,
+    requireEip3009: true
+  });
   const authorization = buildTransferAuthorization({
     from,
     to: requirement.payTo,
