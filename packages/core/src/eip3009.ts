@@ -1,4 +1,4 @@
-import { BASE_NETWORK, type X402Network } from "./constants.js";
+import { ARC_TESTNET_NETWORK, type X402Network } from "./constants.js";
 import type { X402PaymentRequired, X402PaymentRequirements } from "./types.js";
 
 export type TransferAuthorization = {
@@ -53,7 +53,7 @@ function isEip3009Method(method: unknown): boolean {
 
 /**
  * Select a supported `exact` payment requirement from an x402 challenge.
- * `matchAsset` / `requireEip3009` let a caller pin Base USDC EIP-3009 while the
+ * `matchAsset` / `requireEip3009` let a caller pin Arc Testnet USDC EIP-3009 while the
  * default accepts any exact requirement on the network.
  */
 export function selectExactRequirement(
@@ -66,7 +66,7 @@ export function selectExactRequirement(
     requireEip3009?: boolean;
   } = {}
 ): X402PaymentRequirements {
-  const network = options.network ?? BASE_NETWORK;
+  const network = options.network ?? ARC_TESTNET_NETWORK;
   const accepted = paymentRequired.accepts.find(
     (candidate) =>
       candidate.scheme === "exact" &&
@@ -75,7 +75,7 @@ export function selectExactRequirement(
       (!options.requireEip3009 || isEip3009Method(candidate.extra?.assetTransferMethod))
   );
   if (!accepted) {
-    throw new Error("No supported payment requirement in the x402 challenge: h402 only signs Base USDC EIP-3009 `exact` payments.");
+    throw new Error("No supported payment requirement in the x402 challenge: h402 only signs Arc Testnet USDC EIP-3009 `exact` payments.");
   }
   return accepted;
 }

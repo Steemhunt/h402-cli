@@ -55,11 +55,11 @@ export const COMMANDS: Record<string, CommandSpec> = {
       address: { usage: "h402 wallet address [flags]", summary: "Print a wallet address", flags: [FLAGS.name, FLAGS.wallet] },
       balance: {
         usage: "h402 wallet balance [flags]",
-        summary: "Show a wallet's Base USDC balance",
+        summary: "Show a wallet's Arc Testnet USDC balance",
         flags: [FLAGS.name, FLAGS.wallet],
         examples: ["h402 wallet balance --name agent"]
       },
-      fund: { usage: "h402 wallet fund [flags]", summary: "Print the Base USDC deposit address for a wallet", flags: [FLAGS.name, FLAGS.wallet] }
+      fund: { usage: "h402 wallet fund [flags]", summary: "Print Arc Testnet USDC funding instructions for a wallet", flags: [FLAGS.name, FLAGS.wallet] }
     }
   },
   auth: {

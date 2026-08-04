@@ -1,7 +1,7 @@
 {
   "name": "@h402/cli",
   "version": "0.1.0",
-  "description": "Local, non-custodial CLI for h402 — browse the catalog and pay per call in Base USDC over x402 from a local wallet.",
+  "description": "Local, non-custodial CLI for h402 — browse the catalog and pay per call in Arc Testnet USDC over x402 from a local wallet.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -30,7 +30,7 @@
     "agent",
     "payments",
     "usdc",
-    "base",
+    "arc-testnet",
     "cli"
   ],
   "engines": {

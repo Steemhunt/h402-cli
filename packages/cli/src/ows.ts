@@ -1,4 +1,5 @@
 import type { WalletInfo } from "@open-wallet-standard/core";
+import { ARC_TESTNET_NETWORK } from "@h402/core";
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const HEX_SIGNATURE_PATTERN = /^(0x)?[a-fA-F0-9]+$/;
@@ -21,7 +22,7 @@ async function loadOwsCore(): Promise<OwsCore> {
 
 export function getEvmAddress(wallet: WalletInfo) {
   const account =
-    wallet.accounts.find((candidate) => candidate.chainId === "eip155:8453") ??
+    wallet.accounts.find((candidate) => candidate.chainId === ARC_TESTNET_NETWORK) ??
     wallet.accounts.find((candidate) => candidate.chainId.startsWith("eip155:")) ??
     wallet.accounts.find((candidate) => EVM_ADDRESS_PATTERN.test(candidate.address));
 
@@ -69,12 +70,12 @@ export function normalizeOwsSignature(signature: string, recoveryId?: number) {
 
 export async function signOwsMessage(walletName: string, message: string, passphrase?: string) {
   const { signMessage } = await loadOwsCore();
-  const result = signMessage(walletName, "base", message, passphrase);
+  const result = signMessage(walletName, ARC_TESTNET_NETWORK, message, passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
 }
 
 export async function signOwsTypedData(walletName: string, typedData: unknown, passphrase?: string) {
   const { signTypedData } = await loadOwsCore();
-  const result = signTypedData(walletName, "base", JSON.stringify(typedData), passphrase);
+  const result = signTypedData(walletName, ARC_TESTNET_NETWORK, JSON.stringify(typedData), passphrase);
   return normalizeOwsSignature(result.signature, result.recoveryId);
 }
