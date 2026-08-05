@@ -29,7 +29,7 @@ h402 call ai/news                                      # free; omitted provider 
 # Only for routes that answer with a payable 402:
 h402 wallet list                                     # read-only native-binding preflight; [] is OK
 h402 wallet create --name agent                      # local signing wallet
-h402 wallet fund --name agent                        # Base USDC address + instructions
+h402 wallet fund --name agent                        # Arc Testnet USDC faucet + instructions
 h402 call web/search --provider stableenrich-exa --name agent --json '{"query":"agent APIs"}'
 ```
 
@@ -45,8 +45,8 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 | `h402 wallet list` | List OWS wallets |
 | `h402 wallet restore` | Re-adopt OWS wallets into `~/.h402/config.json` |
 | `h402 wallet address --name <n>` | Print the wallet address |
-| `h402 wallet balance --name <n>` | Show the wallet's structured Base USDC balance |
-| `h402 wallet fund --name <n>` | Print the Base USDC deposit address and funding instructions |
+| `h402 wallet balance --name <n>` | Show the wallet's structured Arc Testnet USDC balance |
+| `h402 wallet fund --name <n>` | Print the Arc Testnet USDC address, faucet, explorer, and funding instructions |
 | `h402 auth --name <n>` | Create an optional backend bonus-credit session with a wallet signature |
 | `h402 credits` | Show the bonus-credit balance for the signed-in session |
 | `h402 search <query>` | Search compact route/provider summaries |
@@ -70,7 +70,7 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 | `--passphrase [<s>]` | wallet create, auth, call | Passphrase for a passphrase-protected wallet; omit the value to be prompted (or `H402_WALLET_PASSPHRASE`) |
 | `--no-passphrase` | wallet create, auth, call | Force passphrase-less signing even if `H402_WALLET_PASSPHRASE` is set (the default needs no flag) |
 | `--no-credit` | call | Ignore bonus credits and pay x402 only |
-| `--max-usd <usd>` | call | Optional client-side cap; refuse to sign if the quoted Base USDC amount exceeds it |
+| `--max-usd <usd>` | call | Optional client-side cap; refuse to sign if the quoted Arc Testnet USDC amount exceeds it |
 | `--idempotency-key <uuid>` | call | Stable key for safe retries (default: random) |
 | `--limit <n>` | search | Max results (default `20`) |
 
@@ -86,11 +86,11 @@ h402 call web/search --json '{"query":"..."}'
    ├─ resolve defaultProvider from full route detail
    ├─ request /routes/<provider>/web/search (before wallet resolution)
    ├─ 2xx → returned directly; h402.paidBy says free or credit
-   └─ payable 402 → resolve wallet, sign Base USDC locally, then retry that same pinned request
+   └─ payable 402 → resolve wallet, sign Arc Testnet USDC locally, then retry that same pinned request
 ```
 
-If a route returns a payable 402, you're charged the exact per-call price (most paid
-routes are $0.001–$0.05). An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Run `h402 quote`
+If a route returns a payable 402, the exact quoted Arc Testnet USDC amount is settled (most paid
+routes quote $0.001–$0.05). An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Run `h402 quote`
 first to see a payable route's price without paying. Pass `--max-usd <amount>` on
 `call` (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`)
 to refuse signing a challenge above that USDC cap. Paid call output includes `h402.signedAmount` so agents

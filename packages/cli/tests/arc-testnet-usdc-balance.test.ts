@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BASE_RPC_URLS, balanceOfCalldata, getBaseUsdcBalance } from "../src/base-usdc-balance";
+import { ARC_TESTNET_RPC_URLS, balanceOfCalldata, getArcTestnetUsdcBalance } from "../src/arc-testnet-usdc-balance";
 
 const ADDRESS = "0xa44fc9a56179c734b27cae607c4c5ef4e41468d4";
 
@@ -10,7 +10,7 @@ function rpcResponse(result: string) {
   });
 }
 
-describe("Base USDC balance RPC", () => {
+describe("Arc Testnet USDC balance RPC", () => {
   it("encodes ERC-20 balanceOf calldata without an ABI dependency", () => {
     expect(balanceOfCalldata(ADDRESS.toUpperCase())).toBe(`0x70a08231000000000000000000000000${ADDRESS.slice(2)}`);
   });
@@ -24,7 +24,7 @@ describe("Base USDC balance RPC", () => {
     });
 
     await expect(
-      getBaseUsdcBalance(ADDRESS, {
+      getArcTestnetUsdcBalance(ADDRESS, {
         rpcUrls: ["https://rpc-a.example", "https://rpc-b.example", "https://rpc-c.example", "https://rpc-d.example"],
         fetchFn
       })
@@ -35,7 +35,7 @@ describe("Base USDC balance RPC", () => {
     expect(body.method).toBe("eth_call");
     expect(body.params).toEqual([
       {
-        to: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        to: "0x3600000000000000000000000000000000000000",
         data: `0x70a08231000000000000000000000000${ADDRESS.slice(2)}`
       },
       "latest"
@@ -50,16 +50,21 @@ describe("Base USDC balance RPC", () => {
     });
 
     await expect(
-      getBaseUsdcBalance(ADDRESS, {
+      getArcTestnetUsdcBalance(ADDRESS, {
         rpcUrls: ["https://rpc-a.example", "https://rpc-b.example", "https://rpc-c.example", "https://rpc-d.example"],
         fetchFn
       })
     ).rejects.toThrow(/temporarily unavailable/);
   });
 
-  it("uses at least two HTTPS endpoints for the public Base RPC quorum", () => {
-    expect(BASE_RPC_URLS.length).toBeGreaterThanOrEqual(2);
-    expect(BASE_RPC_URLS.every((url) => new URL(url).protocol === "https:")).toBe(true);
-    expect(new Set(BASE_RPC_URLS).size).toBe(BASE_RPC_URLS.length);
+  it("uses the official HTTPS endpoints for the Arc Testnet RPC quorum", () => {
+    expect(ARC_TESTNET_RPC_URLS).toEqual([
+      "https://rpc.testnet.arc.io",
+      "https://rpc.blockdaemon.testnet.arc.io",
+      "https://rpc.drpc.testnet.arc.io",
+      "https://rpc.quicknode.testnet.arc.io"
+    ]);
+    expect(ARC_TESTNET_RPC_URLS.every((url) => new URL(url).protocol === "https:")).toBe(true);
+    expect(new Set(ARC_TESTNET_RPC_URLS).size).toBe(ARC_TESTNET_RPC_URLS.length);
   });
 });

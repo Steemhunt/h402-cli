@@ -151,14 +151,14 @@ describe("doc examples stay runnable against the provider-pinned catalog contrac
     const text = readFileSync(path.join(here, "..", "..", "core", "README.md"), "utf8");
     const skill = readFileSync(DOC_FILES["SKILL.md"], "utf8");
     expect(text).toContain("`selectExactRequirement` is intentionally h402-opinionated");
-    expect(text).toContain("strict CAIP-2 `eip155:8453`");
+    expect(text).toContain("strict CAIP-2 `eip155:5042002`");
     expect(text).toContain("does not pin the asset or transfer method");
     expect(text).toContain("matchAsset: (asset)");
     expect(text).toContain("requireEip3009: true");
-    expect(text).toContain("BASE_USDC_ADDRESS");
+    expect(text).toContain("ARC_TESTNET_USDC_ADDRESS");
     expect(text).toContain("short-form network names");
     expect(text).toContain("supply your own selector");
-    expect(text).not.toContain("selects the first Base USDC `exact` requirement");
+    expect(text).not.toContain("selects the first Arc Testnet USDC `exact` requirement");
     expect(skill).toContain("does not pin the asset or transfer method");
     expect(skill).toContain("pass `matchAsset` and `requireEip3009`");
   });

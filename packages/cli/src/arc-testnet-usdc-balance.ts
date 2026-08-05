@@ -1,11 +1,13 @@
-import { BASE_CHAIN_ID, BASE_USDC_ADDRESS, USDC_DECIMALS } from "@h402/core";
+import { ARC_TESTNET_CHAIN_ID, ARC_TESTNET_USDC_ADDRESS, USDC_DECIMALS } from "@h402/core";
 
-export const BASE_RPC_URLS = [
-  "https://base-rpc.publicnode.com",
-  "https://base.drpc.org",
-  "https://mainnet.base.org",
-  "https://1rpc.io/base"
+export const ARC_TESTNET_RPC_URLS = [
+  "https://rpc.testnet.arc.io",
+  "https://rpc.blockdaemon.testnet.arc.io",
+  "https://rpc.drpc.testnet.arc.io",
+  "https://rpc.quicknode.testnet.arc.io"
 ] as const;
+export const ARC_TESTNET_EXPLORER_URL = "https://testnet.arcscan.app" as const;
+export const ARC_TESTNET_FAUCET_URL = "https://faucet.circle.com" as const;
 
 const BALANCE_OF_SELECTOR = "70a08231";
 const RPC_TIMEOUT_MS = 5_000;
@@ -19,19 +21,19 @@ type BalanceOptions = {
   timeoutMs?: number;
 };
 
-export type BaseUsdcBalance = {
+export type ArcTestnetUsdcBalance = {
   microUsdc: string;
   usdc: string;
 };
 
-export const BASE_USDC_BALANCE_NETWORK = {
-  name: "base",
-  chainId: BASE_CHAIN_ID
+export const ARC_TESTNET_USDC_BALANCE_NETWORK = {
+  name: "arc-testnet",
+  chainId: ARC_TESTNET_CHAIN_ID
 } as const;
 
-export const BASE_USDC_BALANCE_ASSET = {
+export const ARC_TESTNET_USDC_BALANCE_ASSET = {
   symbol: "USDC",
-  address: BASE_USDC_ADDRESS,
+  address: ARC_TESTNET_USDC_ADDRESS,
   decimals: USDC_DECIMALS
 } as const;
 
@@ -88,7 +90,7 @@ async function rpcBalance(url: string, calldata: string, fetchFn: RpcFetch, sign
       method: "eth_call",
       params: [
         {
-          to: BASE_USDC_ADDRESS,
+          to: ARC_TESTNET_USDC_ADDRESS,
           data: calldata
         },
         "latest"
@@ -110,7 +112,7 @@ async function rpcBalance(url: string, calldata: string, fetchFn: RpcFetch, sign
 }
 
 function quorumUnavailableError() {
-  return new Error("Base USDC balance is temporarily unavailable: RPC quorum failed; need two matching Base RPC responses.");
+  return new Error("Arc Testnet USDC balance is temporarily unavailable: RPC quorum failed; need two matching Arc Testnet RPC responses.");
 }
 
 function firstMatchingQuorum(calls: Promise<bigint>[], rpcUrls: readonly string[]) {
@@ -157,10 +159,10 @@ function formatUsdc(microUsdc: bigint) {
   return `${whole}.${fraction}`;
 }
 
-export async function getBaseUsdcBalance(address: string, options: BalanceOptions = {}): Promise<BaseUsdcBalance> {
-  const rpcUrls = options.rpcUrls ?? BASE_RPC_URLS;
+export async function getArcTestnetUsdcBalance(address: string, options: BalanceOptions = {}): Promise<ArcTestnetUsdcBalance> {
+  const rpcUrls = options.rpcUrls ?? ARC_TESTNET_RPC_URLS;
   if (rpcUrls.length < 2) {
-    throw new Error("At least two Base RPC URLs are required for quorum.");
+    throw new Error("At least two Arc Testnet RPC URLs are required for quorum.");
   }
   const fetchFn = options.fetchFn ?? fetch;
   const calldata = balanceOfCalldata(address);

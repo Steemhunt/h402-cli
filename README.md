@@ -4,15 +4,15 @@
 [![npm](https://img.shields.io/npm/v/%40h402%2Fcore?label=%40h402%2Fcore)](https://www.npmjs.com/package/@h402/core)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
-[![Base · x402](https://img.shields.io/badge/Base-x402-fc6f6f.svg)](https://x402.org)
+[![Arc Testnet · x402](https://img.shields.io/badge/Arc_Testnet-x402-fc6f6f.svg)](https://x402.org)
 
-Open-source toolkit for **h402 — the x402 capability store for agents**. Discover a task, inspect its enabled providers and provider-native contracts, then execute one concrete provider path with Base USDC settlement when required.
+Open-source toolkit for **h402 — the x402 capability store for agents**. Discover a task, inspect its enabled providers and provider-native contracts, then execute one concrete provider path with Arc Testnet USDC settlement when required.
 
 > x402 is the payment rail. h402 is the capability store and execution surface.
 
 - **Browse capabilities** → https://h402.hunt.town/catalog
 - **Docs & agent quickstart** → https://h402.hunt.town/docs
-- **AI agents** → point yours at [`SKILL.md`](./SKILL.md): it can create a wallet, fund it with Base USDC, and start calling tools with no per-provider keys.
+- **AI agents** → point yours at [`SKILL.md`](./SKILL.md): it can create a wallet, fund it with Arc Testnet USDC, and start calling tools with no per-provider keys.
 
 ## Packages
 
@@ -51,7 +51,7 @@ OWS wallet creation and signing use native bindings available only on macOS and 
 
 Each call uses one concrete provider. Without `--provider`, the CLI resolves the route's current `defaultProvider` from full catalog detail before sending the call. Successes include `h402.cliProviderSelection`, and post-resolution failures include the same metadata at `error.detail.h402.cliProviderSelection`. Its `pinnedCommand` is a shell-escaped fresh-call recipe that preserves non-secret request, backend, wallet, and payment-safety flags and omits passphrases and the previous idempotency key. Passing `--provider` skips default resolution and calls that pinned path directly. A `410` response is never retried automatically: read `error.detail.error.candidates`, inspect the replacement with `h402 show`, then start a new explicit call. An unknown route preserves `error.detail.error.recovery.command`, which points back to `h402 search`.
 
-After provider resolution, the CLI sends the request before resolving a wallet. An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Only when the first response is an x402 `402 PAYMENT-REQUIRED` does the CLI resolve a funded local wallet, sign a Base USDC EIP-3009 authorization locally, and retry the same pinned provider path. Pass `--max-usd <amount>` (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse signing a challenge above that USDC cap. Keys never leave your machine.
+After provider resolution, the CLI sends the request before resolving a wallet. An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Only when the first response is an x402 `402 PAYMENT-REQUIRED` does the CLI resolve a funded local wallet, sign an Arc Testnet USDC EIP-3009 authorization locally, and retry the same pinned provider path. Pass `--max-usd <amount>` (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse signing a challenge above that USDC cap. Keys never leave your machine.
 
 A successful `call` prints `{ "data": <provider-native body>, "meta"?: <reserved envelope metadata>, "h402": <execution metadata> }`: `data` stays provider-native, optional `meta` remains reserved envelope metadata rather than normalized provider output, and `h402` carries the provider-pinned execution receipt plus CLI-added `cliProviderSelection`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `h402.followUp` instructions describe async work. On failure the CLI exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr — `message` is human-readable and `detail` preserves the backend recovery body unchanged.
 
