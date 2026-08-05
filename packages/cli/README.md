@@ -136,7 +136,7 @@ h402 call <followUp.routeId> \
 h402 search "token holders"                        # compact JSON to stdout
 h402 show crypto/token-holders --provider nansen     # full native schema/sample
 h402 call crypto/token-holders --provider nansen --name agent \
-  --json '{"chain":"base","token_address":"0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913"}' # JSON result, non-zero exit on failure
+  --json '{"chain":"ethereum","token_address":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}' # JSON result, non-zero exit on failure
 ```
 
 Signing needs no flags for the default passphrase-less wallets. Only when a wallet was created with an opt-in passphrase, `export H402_WALLET_PASSPHRASE=...` (or pass `--passphrase <s>`) — the CLI tells you exactly this when it hits such a wallet non-interactively.

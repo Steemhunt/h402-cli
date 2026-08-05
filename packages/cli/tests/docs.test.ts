@@ -55,7 +55,7 @@ describe("doc examples stay runnable against the provider-pinned catalog contrac
   });
 
   it("payable token-holder examples use one valid catalog address instead of an EVM placeholder", () => {
-    const validInput = '{"chain":"base","token_address":"0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913"}';
+    const validInput = '{"chain":"ethereum","token_address":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}';
     for (const label of ["package README.md", "SKILL.md"]) {
       expect(readFileSync(DOC_FILES[label], "utf8")).toContain(validInput);
     }

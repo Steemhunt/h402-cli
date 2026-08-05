@@ -76,11 +76,11 @@ h402 show crypto/token-holders --provider nansen
 
 # 3. (optional) Preview the price for that concrete provider
 h402 quote crypto/token-holders --provider nansen \
-  --json '{"chain":"base","token_address":"0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913"}'
+  --json '{"chain":"ethereum","token_address":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}'
 
 # 4. Call it — pays on a 402 challenge and keeps the provider pinned
 h402 call crypto/token-holders --provider nansen --name agent \
-  --json '{"chain":"base","token_address":"0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913"}'
+  --json '{"chain":"ethereum","token_address":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}'
 ```
 
 - A route id is `category/action` (e.g. `web/search`, `maps/place-details`, `finance/stock-quote`).
