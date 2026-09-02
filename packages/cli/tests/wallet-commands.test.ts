@@ -4,7 +4,7 @@ import { configMockFactory, owsMockFactory, printed } from "./helpers";
 
 type MockCliConfig = { backendUrl: string; sessions: Record<string, string>; wallets: Record<string, { address?: string }> };
 
-const { createOwsWallet, getOwsWallet, listOwsWallets, getArcTestnetUsdcBalance, loadConfig, updateConfig, updatedConfigs, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => {
+const { createOwsWallet, getOwsWallet, listOwsWallets, getBaseUsdcBalance, loadConfig, updateConfig, updatedConfigs, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => {
   const updatedConfigs: MockCliConfig[] = [];
   const defaultConfig = (): MockCliConfig => ({
     backendUrl: "https://h402.hunt.town",
@@ -22,7 +22,7 @@ const { createOwsWallet, getOwsWallet, listOwsWallets, getArcTestnetUsdcBalance,
     createOwsWallet: vi.fn(),
     getOwsWallet: vi.fn(),
     listOwsWallets: vi.fn(),
-    getArcTestnetUsdcBalance: vi.fn(async () => ({ microUsdc: "955900", usdc: "0.955900" })),
+    getBaseUsdcBalance: vi.fn(async () => ({ microUsdc: "955900", usdc: "0.955900" })),
     loadConfig,
     updateConfig,
     updatedConfigs,
@@ -33,12 +33,10 @@ const { createOwsWallet, getOwsWallet, listOwsWallets, getArcTestnetUsdcBalance,
 
 vi.mock("../src/ows.js", () => owsMockFactory({ createOwsWallet, getOwsWallet, listOwsWallets }));
 
-vi.mock("../src/arc-testnet-usdc-balance.js", () => ({
-  ARC_TESTNET_USDC_BALANCE_NETWORK: { name: "arc-testnet", chainId: 5042002 },
-  ARC_TESTNET_USDC_BALANCE_ASSET: { symbol: "USDC", address: "0x3600000000000000000000000000000000000000", decimals: 6 },
-  ARC_TESTNET_FAUCET_URL: "https://faucet.circle.com",
-  ARC_TESTNET_EXPLORER_URL: "https://testnet.arcscan.app",
-  getArcTestnetUsdcBalance
+vi.mock("../src/base-usdc-balance.js", () => ({
+  BASE_USDC_BALANCE_NETWORK: { name: "base", chainId: 8453 },
+  BASE_USDC_BALANCE_ASSET: { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", decimals: 6 },
+  getBaseUsdcBalance
 }));
 
 vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig, backendUrl: "https://h402.hunt.town" }));
@@ -65,8 +63,8 @@ describe("walletCommand balance/fund wallet selection", () => {
     createOwsWallet.mockReset();
     getOwsWallet.mockReset();
     listOwsWallets.mockReset();
-    getArcTestnetUsdcBalance.mockClear();
-    getArcTestnetUsdcBalance.mockResolvedValue({ microUsdc: "955900", usdc: "0.955900" });
+    getBaseUsdcBalance.mockClear();
+    getBaseUsdcBalance.mockResolvedValue({ microUsdc: "955900", usdc: "0.955900" });
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   });
 
@@ -76,35 +74,32 @@ describe("walletCommand balance/fund wallet selection", () => {
 
   it("resolves --wallet to the owning wallet address for balance", async () => {
     await walletCommand(args({ wallet: ADDR_ALT.toUpperCase() }, "balance"));
-    expect(getArcTestnetUsdcBalance).toHaveBeenCalledWith(ADDR_ALT);
+    expect(getBaseUsdcBalance).toHaveBeenCalledWith(ADDR_ALT);
   });
 
   it("honors --name (balance)", async () => {
     await walletCommand(args({ name: "agent" }, "balance"));
-    expect(getArcTestnetUsdcBalance).toHaveBeenCalledWith(ADDR_AGENT);
+    expect(getBaseUsdcBalance).toHaveBeenCalledWith(ADDR_AGENT);
   });
 
-  it("prints structured Arc Testnet USDC balance", async () => {
+  it("prints structured Base USDC balance", async () => {
     await walletCommand(args({ name: "agent" }, "balance"));
     expect(printed(stdout)).toEqual({
       wallet: { name: "agent", address: ADDR_AGENT },
-      network: { name: "arc-testnet", chainId: 5042002 },
-      asset: { symbol: "USDC", address: "0x3600000000000000000000000000000000000000", decimals: 6 },
+      network: { name: "base", chainId: 8453 },
+      asset: { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", decimals: 6 },
       balance: { microUsdc: "955900", usdc: "0.955900" }
     });
   });
 
-  it("prints Arc Testnet USDC faucet and explorer instructions", async () => {
+  it("prints Base USDC funding instructions without invoking the broken OWS MoonPay flow", async () => {
     await walletCommand(args({ wallet: ADDR_AGENT }, "fund"));
 
     expect(printed(stdout)).toEqual({
       wallet: { name: "agent", address: ADDR_AGENT },
-      network: "arc-testnet",
+      network: "base",
       token: "USDC",
-      faucet: "https://faucet.circle.com",
-      explorer: `https://testnet.arcscan.app/address/${ADDR_AGENT}`,
-      instructions:
-        "Request Arc Testnet USDC from https://faucet.circle.com, or send Arc Testnet USDC to this address, then run h402 wallet balance --name agent."
+      instructions: "Send Base USDC to this address from an exchange, bridge, or another wallet, then run h402 wallet balance --name agent."
     });
   });
 
@@ -151,7 +146,7 @@ describe("walletCommand balance/fund wallet selection", () => {
 
   it("accepts --name and --wallet together when they agree", async () => {
     await walletCommand(args({ name: "alt", wallet: ADDR_ALT }, "balance"));
-    expect(getArcTestnetUsdcBalance).toHaveBeenCalledWith(ADDR_ALT);
+    expect(getBaseUsdcBalance).toHaveBeenCalledWith(ADDR_ALT);
   });
 
   it("explains how to recover when create finds an existing OWS wallet name", async () => {
@@ -232,6 +227,6 @@ describe("walletCommand balance/fund wallet selection", () => {
 
   it("rejects --wallet that disagrees with --name before calling OWS", async () => {
     await expect(walletCommand(args({ name: "agent", wallet: ADDR_ALT }, "balance"))).rejects.toThrow(/does not match wallet "agent"/);
-    expect(getArcTestnetUsdcBalance).not.toHaveBeenCalled();
+    expect(getBaseUsdcBalance).not.toHaveBeenCalled();
   });
 });

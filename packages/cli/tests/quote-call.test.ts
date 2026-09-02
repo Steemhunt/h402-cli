@@ -17,7 +17,7 @@ function args(routeId: string, flags: ParsedArgs["flags"] = {}, ...extra: string
   return { positional: ["cmd", routeId, ...extra], flags: { provider: "demo", ...flags } };
 }
 
-const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:5042002", asset: "0x", amount: "1", payTo: "0x", maxTimeoutSeconds: 60 }] };
+const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", asset: "0x", amount: "1", payTo: "0x", maxTimeoutSeconds: 60 }] };
 
 describe("quote/call exit codes on backend responses", () => {
   let stdout: ReturnType<typeof vi.spyOn>;

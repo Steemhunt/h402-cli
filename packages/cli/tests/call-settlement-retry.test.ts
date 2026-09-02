@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedArgs } from "../src/utils";
-import { ADDR, ARC_TESTNET_USDC, configMockFactory, owsMockFactory, res as response } from "./helpers";
+import { ADDR, BASE_USDC, configMockFactory, owsMockFactory, res as response } from "./helpers";
 
 const IDEMPOTENCY_KEY = "idem-pending-43";
 const REPLACEMENT_KEY = "idem-replacement-43";
@@ -33,8 +33,8 @@ function challenge() {
     accepts: [
       {
         scheme: "exact",
-        network: "eip155:5042002",
-        asset: ARC_TESTNET_USDC,
+        network: "eip155:8453",
+        asset: BASE_USDC,
         amount: "1000",
         payTo: ADDR,
         maxTimeoutSeconds: 60

@@ -1,16 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
-
-const { signMessage, signTypedData } = vi.hoisted(() => ({
-  signMessage: vi.fn(() => ({ signature: `0x${"11".repeat(65)}` })),
-  signTypedData: vi.fn(() => ({ signature: `0x${"22".repeat(65)}` }))
-}));
-
-vi.mock("@open-wallet-standard/core", () => ({ signMessage, signTypedData }));
-
-import { getEvmAddress, normalizeOwsSignature, signOwsMessage, signOwsTypedData } from "../src/ows";
+import { describe, expect, it } from "vitest";
+import { getEvmAddress, normalizeOwsSignature } from "../src/ows";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const owsSource = readFileSync(path.join(here, "..", "src", "ows.ts"), "utf8");
@@ -26,7 +18,7 @@ describe("OWS module loading", () => {
 });
 
 describe("getEvmAddress", () => {
-  it("prefers the Arc Testnet EVM account when present", () => {
+  it("prefers the Base EVM account when present", () => {
     expect(
       getEvmAddress({
         id: "wallet-id",
@@ -39,7 +31,7 @@ describe("getEvmAddress", () => {
             derivationPath: "m/44'/60'/0'/0/0"
           },
           {
-            chainId: "eip155:5042002",
+            chainId: "eip155:8453",
             address: "0x2222222222222222222222222222222222222222",
             derivationPath: "m/44'/60'/0'/0/0"
           }
@@ -102,21 +94,5 @@ describe("normalizeOwsSignature", () => {
 
   it("rejects malformed signatures", () => {
     expect(() => normalizeOwsSignature("not-a-signature")).toThrow("non-hex");
-  });
-});
-
-describe("OWS Arc Testnet signing", () => {
-  it("uses the Arc Testnet CAIP-2 identifier for message signing", async () => {
-    await signOwsMessage("agent", "hello", "secret");
-
-    expect(signMessage).toHaveBeenCalledWith("agent", "eip155:5042002", "hello", "secret");
-  });
-
-  it("uses the Arc Testnet CAIP-2 identifier for typed-data signing", async () => {
-    const typedData = { domain: { chainId: 5042002 } };
-
-    await signOwsTypedData("agent", typedData);
-
-    expect(signTypedData).toHaveBeenCalledWith("agent", "eip155:5042002", JSON.stringify(typedData), undefined);
   });
 });

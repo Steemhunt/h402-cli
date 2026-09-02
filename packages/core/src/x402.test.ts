@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ARC_TESTNET_NETWORK,
-  ARC_TESTNET_USDC_ADDRESS,
+  BASE_NETWORK,
   buildTransferAuthorization,
   createNonce,
   decodeX402Header,
@@ -13,10 +12,10 @@ import {
   type X402PaymentRequired
 } from "./index.js";
 
-const arcTestnetRequirement = {
+const baseRequirement = {
   scheme: "exact" as const,
-  network: ARC_TESTNET_NETWORK,
-  asset: ARC_TESTNET_USDC_ADDRESS,
+  network: BASE_NETWORK,
+  asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
   amount: "50000",
   payTo: "0x1677383A7Bec2cf618FC98aeF68b757BcFc37F27",
   maxTimeoutSeconds: 120
@@ -24,7 +23,7 @@ const arcTestnetRequirement = {
 
 const paymentRequired: X402PaymentRequired = {
   x402Version: 2,
-  accepts: [arcTestnetRequirement]
+  accepts: [baseRequirement]
 };
 
 describe("headers", () => {
@@ -43,8 +42,8 @@ describe("headers", () => {
   });
 
   it("prefers a valid response body over a slim PAYMENT-REQUIRED header", () => {
-    const slim = { x402Version: 2, accepts: [{ ...arcTestnetRequirement, extra: { quoteId: "slim" } }] };
-    const rich = { x402Version: 2, accepts: [{ ...arcTestnetRequirement, extra: { quoteId: "rich", inputSchema: { type: "object" } } }] };
+    const slim = { x402Version: 2, accepts: [{ ...baseRequirement, extra: { quoteId: "slim" } }] };
+    const rich = { x402Version: 2, accepts: [{ ...baseRequirement, extra: { quoteId: "rich", inputSchema: { type: "object" } } }] };
     const headers = new Headers({ "PAYMENT-REQUIRED": encodeX402Header(slim) });
     expect(paymentRequiredFromResponse(headers, rich)).toEqual(rich);
   });
@@ -67,15 +66,8 @@ describe("headers", () => {
 });
 
 describe("selectExactRequirement", () => {
-  it("returns the matching Arc Testnet USDC exact requirement", () => {
-    expect(selectExactRequirement(paymentRequired)).toEqual(arcTestnetRequirement);
-  });
-
-  it("supports an explicitly selected upstream CAIP-2 network", () => {
-    const upstreamRequirement = { ...arcTestnetRequirement, network: "eip155:999999" };
-    const upstreamChallenge: X402PaymentRequired = { x402Version: 2, accepts: [upstreamRequirement] };
-
-    expect(selectExactRequirement(upstreamChallenge, { network: "eip155:999999" })).toEqual(upstreamRequirement);
+  it("returns the matching Base USDC exact requirement", () => {
+    expect(selectExactRequirement(paymentRequired)).toEqual(baseRequirement);
   });
 
   it("honors an asset matcher", () => {
@@ -84,18 +76,18 @@ describe("selectExactRequirement", () => {
 
   it("requireEip3009 rejects native, permit2, and other explicit non-eip3009 methods", () => {
     for (const assetTransferMethod of ["native", "permit2", "other"]) {
-      const challenge: X402PaymentRequired = { x402Version: 2, accepts: [{ ...arcTestnetRequirement, extra: { assetTransferMethod } }] };
+      const challenge: X402PaymentRequired = { x402Version: 2, accepts: [{ ...baseRequirement, extra: { assetTransferMethod } }] };
       expect(() => selectExactRequirement(challenge, { requireEip3009: true })).toThrow();
     }
   });
 
   it("requireEip3009 accepts an explicit eip3009 method, an absent method, and scans past unsupported entries", () => {
-    const eip3009 = { ...arcTestnetRequirement, extra: { assetTransferMethod: "eip3009" } };
+    const eip3009 = { ...baseRequirement, extra: { assetTransferMethod: "eip3009" } };
     expect(selectExactRequirement({ x402Version: 2, accepts: [eip3009] }, { requireEip3009: true })).toEqual(eip3009);
     // An absent method is the default EIP-3009 shape.
-    expect(selectExactRequirement(paymentRequired, { requireEip3009: true })).toEqual(arcTestnetRequirement);
+    expect(selectExactRequirement(paymentRequired, { requireEip3009: true })).toEqual(baseRequirement);
     // A permit2 entry is skipped in favor of a later valid eip3009 entry.
-    const permit2 = { ...arcTestnetRequirement, extra: { assetTransferMethod: "permit2" } };
+    const permit2 = { ...baseRequirement, extra: { assetTransferMethod: "permit2" } };
     expect(selectExactRequirement({ x402Version: 2, accepts: [permit2, eip3009] }, { requireEip3009: true })).toEqual(eip3009);
   });
 });

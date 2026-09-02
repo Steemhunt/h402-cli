@@ -3,7 +3,7 @@ import os from "node:os";
 import { vi } from "vitest";
 
 export const ADDR = "0x1111111111111111111111111111111111111111";
-export const ARC_TESTNET_USDC = "0x3600000000000000000000000000000000000000";
+export const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 
 export function res(status: number, body: unknown, headers: Record<string, string> = {}, statusText?: string) {
   return {

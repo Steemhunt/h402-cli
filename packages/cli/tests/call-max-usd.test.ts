@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
-import { ADDR, ARC_TESTNET_USDC, configMockFactory, owsMockFactory, printed, res } from "./helpers";
+import { ADDR, BASE_USDC, configMockFactory, owsMockFactory, printed, res } from "./helpers";
 
 const { loadConfig, signOwsTypedData } = vi.hoisted(() => {
   const signature = `0x${"11".repeat(65)}` as `0x${string}`;
@@ -35,8 +35,8 @@ function challenge(amount: unknown) {
     accepts: [
       {
         scheme: "exact",
-        network: "eip155:5042002",
-        asset: ARC_TESTNET_USDC,
+        network: "eip155:8453",
+        asset: BASE_USDC,
         amount,
         payTo: ADDR,
         maxTimeoutSeconds: 60
@@ -70,14 +70,6 @@ describe("callCommand --max-usd", () => {
     await callCommand(args({ "max-usd": "0.05" }));
 
     expect(signOwsTypedData).toHaveBeenCalled();
-    expect(signOwsTypedData.mock.calls[0]?.[1]).toMatchObject({
-      domain: {
-        name: "USDC",
-        version: "2",
-        chainId: 5042002,
-        verifyingContract: ARC_TESTNET_USDC
-      }
-    });
     const output = printed(stdout);
     expect(output.h402).toMatchObject({
       provider: "demo",

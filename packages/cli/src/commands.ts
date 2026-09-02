@@ -1,12 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { assertOk, backendErrorCode, IDEMPOTENCY_MONEY_GUIDANCE, requestJson, type ApiResponse } from "./api.js";
-import {
-  ARC_TESTNET_EXPLORER_URL,
-  ARC_TESTNET_FAUCET_URL,
-  ARC_TESTNET_USDC_BALANCE_ASSET,
-  ARC_TESTNET_USDC_BALANCE_NETWORK,
-  getArcTestnetUsdcBalance
-} from "./arc-testnet-usdc-balance.js";
+import { BASE_USDC_BALANCE_ASSET, BASE_USDC_BALANCE_NETWORK, getBaseUsdcBalance } from "./base-usdc-balance.js";
 import {
   explicitShowSelection,
   fetchCatalogRoute,
@@ -34,7 +28,7 @@ import {
   resolveMethod,
   type ParsedArgs
 } from "./utils.js";
-import { createPaymentSignatureHeader, paymentRequiredFromResponse, selectArcTestnetUsdcRequirement, X402_HEADERS } from "./x402.js";
+import { createPaymentSignatureHeader, paymentRequiredFromResponse, selectBaseUsdcRequirement, X402_HEADERS } from "./x402.js";
 
 const DEFAULT_WALLET_NAME = "h402";
 
@@ -286,9 +280,9 @@ export async function walletCommand(args: ParsedArgs) {
     const { name: signingName, address } = await resolveSigningWallet(args, config);
     await printJson({
       wallet: { name: signingName, address },
-      network: ARC_TESTNET_USDC_BALANCE_NETWORK,
-      asset: ARC_TESTNET_USDC_BALANCE_ASSET,
-      balance: await getArcTestnetUsdcBalance(address)
+      network: BASE_USDC_BALANCE_NETWORK,
+      asset: BASE_USDC_BALANCE_ASSET,
+      balance: await getBaseUsdcBalance(address)
     });
     return;
   }
@@ -297,11 +291,9 @@ export async function walletCommand(args: ParsedArgs) {
     const { name: signingName, address } = await resolveSigningWallet(args, config);
     await printJson({
       wallet: { name: signingName, address },
-      network: "arc-testnet",
+      network: "base",
       token: "USDC",
-      faucet: ARC_TESTNET_FAUCET_URL,
-      explorer: `${ARC_TESTNET_EXPLORER_URL}/address/${address}`,
-      instructions: `Request Arc Testnet USDC from ${ARC_TESTNET_FAUCET_URL}, or send Arc Testnet USDC to this address, then run h402 wallet balance --name ${signingName}.`
+      instructions: `Send Base USDC to this address from an exchange, bridge, or another wallet, then run h402 wallet balance --name ${signingName}.`
     });
     return;
   }
@@ -466,7 +458,7 @@ function parseUsdMicros(raw: string, source: string) {
   return micros;
 }
 
-function parseUsdcMicros(raw: unknown, source: string) {
+function parseBaseUsdcMicros(raw: unknown, source: string) {
   if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
     throw new Error(`${source} must be an unsigned integer amount in USDC micros (got ${JSON.stringify(raw)}).`);
   }
@@ -488,7 +480,7 @@ function maxUsd(args: ParsedArgs, config: CliConfig) {
 }
 
 function assertUnderMaxUsd(amount: string, cap: ReturnType<typeof maxUsd>) {
-  const amountMicros = parseUsdcMicros(amount, "x402 payment amount");
+  const amountMicros = parseBaseUsdcMicros(amount, "x402 payment amount");
   if (cap && amountMicros > cap.micros) {
     throw new Error(`Payment amount $${formatUsdMicros(amountMicros)} USDC exceeds --max-usd ${cap.raw}; refusing to sign.`);
   }
@@ -604,7 +596,7 @@ export async function callCommand(args: ParsedArgs) {
       return;
     }
 
-    const accepted = selectArcTestnetUsdcRequirement(paymentRequired);
+    const accepted = selectBaseUsdcRequirement(paymentRequired);
     const amountMicros = assertUnderMaxUsd(accepted.amount, paymentCap);
     const { name, address: walletAddress } = await resolveSigningWallet(args, config);
     const paymentSignature = await signWithWalletPassphrase(args, name, (passphrase) =>

@@ -63,7 +63,7 @@ function args(command: string, flags: ParsedArgs["flags"] = {}): ParsedArgs {
 
 const challenge = {
   x402Version: 2,
-  accepts: [{ scheme: "exact", network: "eip155:5042002", asset: "0x", amount: "1", payTo: "0x", maxTimeoutSeconds: 60 }]
+  accepts: [{ scheme: "exact", network: "eip155:8453", asset: "0x", amount: "1", payTo: "0x", maxTimeoutSeconds: 60 }]
 };
 
 describe("provider-first catalog commands", () => {

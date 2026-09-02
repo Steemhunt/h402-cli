@@ -3,7 +3,7 @@ name: h402
 description: >-
   Call any agent capability — web search, crypto & market data, maps, social,
   finance, security checks, OCR, weather, and more — through h402's capability
-  store and concrete provider paths, paying per call in Arc Testnet USDC over x402 with
+  store and concrete provider paths, paying per call in Base USDC over x402 with
   the open-source h402 CLI. Use when
   an agent needs live external data or a paid API without managing per-provider
   API keys or subscriptions.
@@ -13,7 +13,7 @@ description: >-
 
 h402 is the **x402 capability store for agents**. Discover a task, inspect its enabled
 providers and provider-native contracts, then call one concrete provider path. h402
-returns a free result or settles a payable challenge in Arc Testnet USDC without per-vendor
+returns a free result or settles a payable challenge in Base USDC without per-vendor
 API keys or subscriptions. A funded wallet is needed only for a payable challenge.
 
 ## When to use this
@@ -54,15 +54,15 @@ h402 wallet create --name agent
 # -> {"wallet":{"name":"agent","address":"0x..."}}
 ```
 
-Fund it with **Arc Testnet USDC**. `h402 wallet fund --name agent` prints the address,
-the official Circle testnet faucet, and an Arc Testnet explorer link. Request test USDC
-from the faucet or send Arc Testnet USDC from another wallet. Then check it:
+Fund it with **Base USDC**: send USDC (on Base) to that address from an exchange,
+bridge, or another wallet. `h402 wallet fund --name agent` prints the address and
+funding instructions; it does not depend on the OWS/MoonPay deposit flow. Then check it:
 
 ```bash
 h402 wallet balance --name agent
 ```
 
-A small Arc Testnet USDC faucet allocation covers hundreds of calls — most routes quote **$0.001–$0.05** each.
+A few dollars of USDC covers hundreds of calls — most routes cost **$0.001–$0.05** each.
 
 ## The loop: find → inspect → (quote) → call
 
@@ -104,7 +104,7 @@ h402 call crypto/token-holders --provider nansen --name agent \
 
 ## How payment works (per call, non-custodial)
 
-The CLI sends the first request before resolving a wallet. An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Only a payable `402` makes the CLI resolve a wallet, sign an Arc Testnet USDC EIP-3009
+The CLI sends the first request before resolving a wallet. An initial 2xx is returned directly — `h402.paidBy` says whether it was `free` (no charge) or covered by bonus `credit` from an authenticated session. Only a payable `402` makes the CLI resolve a wallet, sign a Base USDC EIP-3009
 `transferWithAuthorization` **locally** (your key never leaves the machine), attach it as
 a `PAYMENT-SIGNATURE` header, and retry the same request. Pass `--max-usd <amount>`
 (or store a string `maxUsd`, such as `"0.05"`, in `~/.h402/config.json`) to refuse
@@ -131,6 +131,6 @@ confirms that the original authorization was not paid.
 
 ## Notes
 
-- All payments are Arc Testnet USDC over x402; the CLI is open-source and non-custodial.
+- All payments are Base USDC over x402; the CLI is open-source and non-custodial.
 - If you run `h402 auth`, bonus credits are drawn before USDC; pass `--no-credit` to force USDC.
-- For custom (non-CLI) integration, import [`@h402/core`](./packages/core) and plug in your own signer. Its `selectExactRequirement` helper pins the `exact` scheme and strict Arc Testnet CAIP-2 network by default, but it does not pin the asset or transfer method; pass `matchAsset` and `requireEip3009` for canonical Arc Testnet USDC EIP-3009 challenges. Non-h402 x402 servers with short network names or multi-amount menus should use the primitives with a custom selector.
+- For custom (non-CLI) integration, import [`@h402/core`](./packages/core) and plug in your own signer. Its `selectExactRequirement` helper pins the `exact` scheme and strict Base CAIP-2 network by default, but it does not pin the asset or transfer method; pass `matchAsset` and `requireEip3009` for canonical Base USDC EIP-3009 challenges. Non-h402 x402 servers with short network names or multi-amount menus should use the primitives with a custom selector.
