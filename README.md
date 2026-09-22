@@ -81,7 +81,7 @@ npm run lint       # eslint across packages
 npm test           # vitest across packages
 ```
 
-Node 22+. ESM throughout.
+Node 22.19+. ESM throughout.
 
 ## Releasing
 

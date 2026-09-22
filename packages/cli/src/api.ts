@@ -1,4 +1,4 @@
-import { Agent } from "undici";
+import { Agent, fetch, Headers as UndiciHeaders, type RequestInit, type Response } from "undici";
 import { CliError } from "./errors.js";
 import { getVersion } from "./help.js";
 import { isRecord } from "./utils.js";
@@ -41,7 +41,7 @@ export async function requestJson<T>(
   path: string,
   init: FetchInit = {}
 ): Promise<ApiResponse<T>> {
-  const headers = new Headers(init.headers);
+  const headers = new UndiciHeaders(init.headers);
   headers.set("accept", "application/json");
   if (!headers.has("user-agent")) {
     headers.set("user-agent", `h402-cli/${getVersion()}`);
@@ -64,7 +64,7 @@ export async function requestJson<T>(
       ...fetchInit,
       headers,
       dispatcher: h402FetchDispatcher
-    } as RequestInit);
+    });
   } catch (error) {
     throw new CliError(`Request to ${url} failed: ${networkErrorMessage(error)}`, { backendUrl, url });
   }
@@ -78,7 +78,7 @@ export async function requestJson<T>(
     // parse — keep the raw text so assertOk can surface it instead of throwing here.
     body = text as unknown as T;
   }
-  return { backendUrl, url, status: response.status, statusText: response.statusText, body, headers: response.headers };
+  return { backendUrl, url, status: response.status, statusText: response.statusText, body, headers: new Headers([...response.headers]) };
 }
 
 function responseContext<T>(response: ApiResponse<T>) {
