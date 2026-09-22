@@ -84,4 +84,17 @@ describe("authCommand", () => {
     expect(written).not.toContain("secret-token");
     expect(JSON.parse(written)).toEqual({ session: { address: ADDR, expiresAt: "2026-07-05T00:00:00.000Z" } });
   });
+
+  it("signs authentication with the configured default wallet", async () => {
+    loadConfig.mockResolvedValueOnce({
+      backendUrl: "https://test.example",
+      sessions: {},
+      wallets: { agent: { address: ADDR } },
+      defaultWallet: "agent"
+    });
+
+    await authCommand(args());
+
+    expect(signOwsMessage).toHaveBeenCalledWith("agent", "sign me", undefined);
+  });
 });

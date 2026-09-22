@@ -9,6 +9,7 @@ export type CliConfig = {
   backendUrl: string;
   sessions: Record<string, string>;
   wallets: Record<string, { address?: string }>;
+  defaultWallet?: string;
   maxUsd?: string;
 };
 
@@ -33,6 +34,12 @@ function normalizeConfig(parsed: Record<string, unknown>): CliConfig {
   };
   if (typeof parsed.maxUsd === "string") {
     normalized.maxUsd = parsed.maxUsd;
+  }
+  if (parsed.defaultWallet !== undefined) {
+    if (typeof parsed.defaultWallet !== "string" || !parsed.defaultWallet.trim()) {
+      throw new Error("h402 config defaultWallet must be a non-empty wallet name");
+    }
+    normalized.defaultWallet = parsed.defaultWallet;
   }
   return normalized;
 }
@@ -82,6 +89,9 @@ function cloneConfig(config: CliConfig): CliConfig {
   };
   if (config.maxUsd !== undefined) {
     cloned.maxUsd = config.maxUsd;
+  }
+  if (config.defaultWallet !== undefined) {
+    cloned.defaultWallet = config.defaultWallet;
   }
   return cloned;
 }

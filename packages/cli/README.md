@@ -37,6 +37,8 @@ Browsing, quoting, and free-route calls do not require a local wallet. Wallet cr
 
 Calls hit the production backend (`https://h402.hunt.town`) by default — override with `--api-url` or `H402_API_URL` (e.g. `http://localhost:3000` for local dev).
 
+To select a default local signing wallet, add `"defaultWallet": "agent"` to your existing `~/.h402/config.json`, preserving its other fields. This applies to wallet creation, address, balance, funding instructions, authentication, and paid calls. Explicit `--name` or `--wallet` takes precedence; without this setting, the default remains `h402`. If the selected wallet is missing, the CLI reports an error instead of using another wallet. Existing bonus-credit sessions remain associated with the wallet that authenticated them; changing `defaultWallet` does not switch those sessions.
+
 ## Commands
 
 | Command | Description |
@@ -60,7 +62,7 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `--name <wallet>` | wallet create/address/balance/fund; auth; call | Wallet to use (default `h402`) |
+| `--name <wallet>` | wallet create/address/balance/fund; auth; call | Wallet to use (default: `defaultWallet` in config, otherwise `h402`) |
 | `--wallet 0x...` | wallet address/balance/fund; auth; call | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
 | `--api-url <url>` | auth, credits, search, show, quote, call | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`) |
 | `--json '{...}'` | quote, call | Request body (sets method to POST) |
@@ -148,7 +150,7 @@ Signing needs no flags for the default passphrase-less wallets. Only when a wall
 | `H402_API_URL` | Backend base URL override (or `--api-url`; default `https://h402.hunt.town`) |
 | `H402_WALLET_PASSPHRASE` | Passphrase for passphrase-protected wallets (only needed when the wallet was created with one) |
 
-Passphrases are never stored. Wallets are passphrase-less by default; opt in at create time (`--passphrase <s>`, or bare `--passphrase` to be prompted) when a wallet guards meaningful funds. The CLI persists only the backend URL, session tokens, and known wallet addresses in `~/.h402/config.json`.
+Passphrases are never stored. Wallets are passphrase-less by default; opt in at create time (`--passphrase <s>`, or bare `--passphrase` to be prompted) when a wallet guards meaningful funds. The CLI persists the backend URL, session tokens, known wallet addresses, and optional `defaultWallet` and `maxUsd` settings in `~/.h402/config.json`.
 
 ## Contributing
 

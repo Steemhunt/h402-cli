@@ -93,10 +93,38 @@ describe("loadConfig / updateConfig", () => {
       backendUrl: "https://staging.example",
       sessions: { "https://staging.example": "tok" },
       wallets: { h402: { address: "0xabc" } },
+      defaultWallet: "h402",
       maxUsd: "0.05"
     };
     await updateConfig(() => config);
     await expect(loadConfig()).resolves.toEqual(config);
+  });
+
+  it("preserves the default wallet when sessions and wallet mappings change", async () => {
+    await updateConfig((config) => {
+      config.defaultWallet = "agent";
+      config.wallets.agent = { address: "0xabc" };
+    });
+    await updateConfig((config) => {
+      config.sessions[PROD_URL] = "tok";
+      config.wallets.other = { address: "0xdef" };
+    });
+
+    await expect(loadConfig()).resolves.toMatchObject({
+      defaultWallet: "agent",
+      sessions: { [PROD_URL]: "tok" },
+      wallets: { agent: { address: "0xabc" }, other: { address: "0xdef" } }
+    });
+  });
+
+  it.each(["", "   ", null, 5])("rejects an invalid default wallet instead of silently selecting h402: %j", async (defaultWallet) => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    const raw = JSON.stringify({ defaultWallet });
+    await writeFile(configFile, raw);
+
+    await expect(loadConfig()).rejects.toThrow(/defaultWallet must be a non-empty wallet name/);
+    await expect(updateConfig(() => undefined)).rejects.toThrow(/defaultWallet must be a non-empty wallet name/);
+    expect(await readFile(configFile, "utf8")).toBe(raw);
   });
 
   it("reclaims a config lock owned by a dead process", async () => {

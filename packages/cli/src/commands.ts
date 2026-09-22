@@ -32,8 +32,8 @@ import { createPaymentSignatureHeader, paymentRequiredFromResponse, selectBaseUs
 
 const DEFAULT_WALLET_NAME = "h402";
 
-function walletName(args: ParsedArgs) {
-  return flagString(args.flags, "name", DEFAULT_WALLET_NAME) as string;
+function walletName(args: ParsedArgs, config: CliConfig) {
+  return flagString(args.flags, "name", config.defaultWallet ?? DEFAULT_WALLET_NAME) as string;
 }
 
 // Explicit passphrase from flags/env. Wallets are passphrase-less by default
@@ -200,25 +200,7 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
   const explicitAddress = flagString(args.flags, "wallet")?.toLowerCase();
   const explicitName = flagString(args.flags, "name");
 
-  if (explicitName) {
-    const address = config.wallets[explicitName]?.address?.toLowerCase();
-    if (!address) {
-      const adopted = await adoptOwsWalletByName(explicitName, config);
-      if (adopted) {
-        if (explicitAddress && explicitAddress !== adopted.address) {
-          throw new Error(`--wallet ${explicitAddress} does not match wallet "${explicitName}" (${adopted.address}). Omit --wallet or pass the wallet that owns this address.`);
-        }
-        return adopted;
-      }
-      throw new Error(`No address known for wallet "${explicitName}". Run: h402 wallet create --name ${explicitName}, or h402 wallet restore to re-adopt existing OWS wallets.`);
-    }
-    if (explicitAddress && explicitAddress !== address) {
-      throw new Error(`--wallet ${explicitAddress} does not match wallet "${explicitName}" (${address}). Omit --wallet or pass the wallet that owns this address.`);
-    }
-    return { name: explicitName, address };
-  }
-
-  if (explicitAddress) {
+  if (explicitAddress && !explicitName) {
     const owner = Object.entries(config.wallets).find(([, wallet]) => wallet.address?.toLowerCase() === explicitAddress);
     if (!owner) {
       const adopted = await adoptOwsWalletByAddress(explicitAddress, config);
@@ -228,22 +210,25 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
     return { name: owner[0], address: explicitAddress };
   }
 
-  const address = config.wallets[DEFAULT_WALLET_NAME]?.address?.toLowerCase();
-  if (!address) {
-    const adopted = await adoptOwsWalletByName(DEFAULT_WALLET_NAME, config);
-    if (adopted) return adopted;
-    throw new Error(`No address known for wallet "${DEFAULT_WALLET_NAME}". Run: h402 wallet create --name ${DEFAULT_WALLET_NAME} (or pass --name/--wallet), or h402 wallet restore to re-adopt existing OWS wallets.`);
+  const name = walletName(args, config);
+  const address = config.wallets[name]?.address?.toLowerCase();
+  const resolved = address ? { name, address } : await adoptOwsWalletByName(name, config);
+  if (!resolved) {
+    throw new Error(`No address known for wallet "${name}". Run: h402 wallet create --name ${name}, or h402 wallet restore to re-adopt existing OWS wallets.`);
   }
-  return { name: DEFAULT_WALLET_NAME, address };
+  if (explicitAddress && explicitAddress !== resolved.address) {
+    throw new Error(`--wallet ${explicitAddress} does not match wallet "${name}" (${resolved.address}). Omit --wallet or pass the wallet that owns this address.`);
+  }
+  return resolved;
 }
 
 export async function walletCommand(args: ParsedArgs) {
   const subcommand = requireValue(args.positional[1], "wallet subcommand is required");
   rejectExtraPositionals(args, 2, `wallet ${subcommand}`);
-  const name = walletName(args);
   const config = await loadConfig();
 
   if (subcommand === "create") {
+    const name = walletName(args, config);
     let wallet: ResolvedWallet;
     try {
       wallet = await createOwsWallet(name, await createPassphrase(args));

@@ -38,6 +38,7 @@ describe("callCommand free routes", () => {
   });
 
   it("does not require a local wallet before a free first response", async () => {
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {}, wallets: {}, defaultWallet: "missing" });
     const fetch = vi.fn(async () => res(200, { status: "complete" }));
     vi.stubGlobal("fetch", fetch);
 
@@ -48,6 +49,7 @@ describe("callCommand free routes", () => {
       expect.objectContaining({ method: "GET" })
     );
     expect(stdout).toHaveBeenCalledWith(expect.stringContaining("complete"));
+    expect(getOwsWallet).not.toHaveBeenCalled();
   });
 
   it("still requires a local wallet once the first response asks for payment", async () => {

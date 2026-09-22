@@ -1,6 +1,6 @@
 {
   "name": "@h402/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local, non-custodial CLI for h402 — browse the catalog and pay per call in Base USDC over x402 from a local wallet.",
   "license": "MIT",
   "type": "module",

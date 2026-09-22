@@ -44,6 +44,25 @@ describe("resolveSigningWallet", () => {
     await expect(resolveSigningWallet(args({}), config())).resolves.toEqual({ name: "h402", address: ADDR_H402 });
   });
 
+  it("selects the configured default wallet for signing", async () => {
+    await expect(resolveSigningWallet(args({}), { ...config(), defaultWallet: "alt" })).resolves.toEqual({ name: "alt", address: ADDR_ALT });
+  });
+
+  it.each([{ name: "h402" }, { wallet: ADDR_H402 }])("lets an explicit wallet override a missing configured default: %j", async (flags) => {
+    await expect(resolveSigningWallet(args(flags), { ...config(), defaultWallet: "ghost" })).resolves.toEqual({ name: "h402", address: ADDR_H402 });
+  });
+
+  it("does not fall back to h402 when the configured default wallet is missing", async () => {
+    await expect(resolveSigningWallet(args({}), { ...config(), defaultWallet: "ghost" })).rejects.toThrow(/No address known for wallet "ghost"/);
+  });
+
+  it("re-adopts the configured default wallet from OWS when its mapping is missing", async () => {
+    getOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_ALT.toUpperCase() });
+
+    await expect(resolveSigningWallet(args({}), { ...config(), defaultWallet: "agent" })).resolves.toEqual({ name: "agent", address: ADDR_ALT });
+    expect(getOwsWallet).toHaveBeenLastCalledWith("agent");
+  });
+
   it("selects by --name", async () => {
     await expect(resolveSigningWallet(args({ name: "alt" }), config())).resolves.toEqual({ name: "alt", address: ADDR_ALT });
   });

@@ -17,7 +17,7 @@ type CommandSpec = {
 // Reusable flag definitions (DRY: declared once, referenced by each command that
 // accepts them — mirrors the README flags table).
 const FLAGS = {
-  name: { name: "name", value: "<wallet>", desc: "Wallet to use (default h402)" },
+  name: { name: "name", value: "<wallet>", desc: "Wallet to use (default: config.defaultWallet, otherwise h402)" },
   wallet: { name: "wallet", value: "0x...", desc: "Local wallet that owns this address (must agree with --name)" },
   apiUrl: { name: "api-url", value: "<url>", desc: "Backend base URL (or H402_API_URL; default https://h402.hunt.town)" },
   json: { name: "json", value: "'{...}'", desc: "Request body (sets method to POST)" },

@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CliConfig as MockCliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
 import { configMockFactory, owsMockFactory, printed } from "./helpers";
-
-type MockCliConfig = { backendUrl: string; sessions: Record<string, string>; wallets: Record<string, { address?: string }> };
 
 const { createOwsWallet, getOwsWallet, listOwsWallets, getBaseUsdcBalance, loadConfig, updateConfig, updatedConfigs, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => {
   const updatedConfigs: MockCliConfig[] = [];
@@ -80,6 +79,29 @@ describe("walletCommand balance/fund wallet selection", () => {
   it("honors --name (balance)", async () => {
     await walletCommand(args({ name: "agent" }, "balance"));
     expect(getBaseUsdcBalance).toHaveBeenCalledWith(ADDR_AGENT);
+  });
+
+  it.each(["address", "balance", "fund"])("uses the configured default wallet for %s", async (subcommand) => {
+    loadConfig.mockResolvedValueOnce({
+      backendUrl: "https://h402.hunt.town",
+      sessions: {},
+      wallets: { agent: { address: ADDR_AGENT }, alt: { address: ADDR_ALT } },
+      defaultWallet: "alt"
+    });
+
+    await walletCommand(args({}, subcommand));
+
+    expect(printed(stdout).wallet).toEqual({ name: "alt", address: ADDR_ALT });
+  });
+
+  it.each([{ flags: {}, name: "agent" }, { flags: { name: "alt" }, name: "alt" }])("selects $name for creation with a configured default", async ({ flags, name }) => {
+    loadConfig.mockResolvedValueOnce({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {}, defaultWallet: "agent" });
+    createOwsWallet.mockResolvedValueOnce({ name, address: ADDR_AGENT });
+
+    await walletCommand(args(flags, "create"));
+
+    expect(createOwsWallet).toHaveBeenCalledWith(name, undefined);
+    expect(printed(stdout).wallet).toEqual({ name, address: ADDR_AGENT });
   });
 
   it("prints structured Base USDC balance", async () => {

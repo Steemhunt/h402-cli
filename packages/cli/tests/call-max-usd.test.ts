@@ -90,6 +90,18 @@ describe("callCommand --max-usd", () => {
     expect(printed(stdout).h402.signedAmount).toEqual({ amount: "1234567", asset: "USDC", decimals: 6, usd: "1.234567" });
   });
 
+  it("uses the configured wallet for both the payment signer and authorization address", async () => {
+    const agentAddress = "0x2222222222222222222222222222222222222222";
+    loadConfig.mockResolvedValue(config({ defaultWallet: "agent", wallets: { h402: { address: ADDR }, agent: { address: agentAddress } } }));
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(res(402, challenge("50000")))
+      .mockResolvedValueOnce(res(200, { data: { ok: true }, h402: { provider: "demo" } })));
+
+    await callCommand(args());
+
+    expect(signOwsTypedData).toHaveBeenCalledWith("agent", expect.objectContaining({ message: expect.objectContaining({ from: agentAddress }) }), undefined);
+  });
+
   it("derives the payment authorization clock from the first response Date header", async () => {
     const fetch = vi
       .fn()
