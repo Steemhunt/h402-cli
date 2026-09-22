@@ -26,6 +26,7 @@ import {
   printJson,
   requireValue,
   resolveMethod,
+  writeStderr,
   type ParsedArgs
 } from "./utils.js";
 import { createPaymentSignatureHeader, paymentRequiredFromResponse, selectBaseUsdcRequirement, X402_HEADERS } from "./x402.js";
@@ -222,6 +223,87 @@ export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig)
   return resolved;
 }
 
+async function fundWallet(args: ParsedArgs, config: CliConfig) {
+  const amount = parseUsdMicros(flagString(args.flags, "amount", "5")!, "--amount");
+  if (amount === 0n) throw new Error("Flag --amount must be greater than zero.");
+  if (amount > (1n << 256n) - 1n) throw new Error("Flag --amount exceeds the maximum USDC transfer amount (uint256).");
+  const suggestedAmount = formatUsdMicros(amount);
+  const timeout = flagString(args.flags, "timeout", "300")!;
+  if (!/^\d+$/.test(timeout) || Number(timeout) < 1 || Number(timeout) > 3600) {
+    throw new Error("Flag --timeout must be an integer from 1 to 3600 seconds.");
+  }
+  let base: URL;
+  try {
+    base = new URL(backendUrl(config, flagString(args.flags, "api-url")));
+  } catch {
+    throw new Error("The funding backend URL must be an absolute HTTP or HTTPS URL.");
+  }
+  if (!["http:", "https:"].includes(base.protocol) || base.username || base.password) {
+    throw new Error("The funding backend URL must use HTTP or HTTPS without embedded credentials.");
+  }
+  const wallet = await resolveSigningWallet(args, config);
+  const url = new URL("/wallet/fund", base.origin);
+  url.search = new URLSearchParams({ address: wallet.address, amount: suggestedAmount }).toString();
+  const funding = {
+    wallet,
+    network: "base",
+    token: "USDC",
+    suggestedAmount,
+    fundingUrl: url.href
+  };
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  if (!interactive && !flagBoolean(args.flags, "wait")) {
+    await printJson({ ...funding, status: "awaiting_funds" });
+    return;
+  }
+
+  const timeoutMs = Number(timeout) * 1000;
+  const deadline = Date.now() + timeoutMs;
+  const readBalance = () => getBaseUsdcBalance(wallet.address, { timeoutMs: Math.min(5000, Math.max(1, deadline - Date.now())) });
+  let baseline: Awaited<ReturnType<typeof getBaseUsdcBalance>>;
+  try {
+    baseline = await readBalance();
+  } catch (error) {
+    throw new CliError("Could not establish the starting Base USDC balance. Funding has not been confirmed.", {
+      ...funding,
+      reason: "balance_unavailable",
+      cause: error instanceof Error ? error.message : String(error)
+    });
+  }
+  if (interactive) {
+    await writeStderr(`Open ${url.href}\nWaiting up to ${timeout} seconds for Base USDC to arrive. Press Ctrl+C to stop waiting.\n`);
+  }
+  let balance = baseline;
+  let lastRpcError: string | undefined;
+  while (Date.now() < deadline) {
+    await delay(Math.min(10_000, timeoutMs / 2, deadline - Date.now()));
+    if (Date.now() >= deadline) break;
+    try {
+      balance = await readBalance();
+      lastRpcError = undefined;
+    } catch (error) {
+      lastRpcError = error instanceof Error ? error.message : String(error);
+      continue;
+    }
+    const received = BigInt(balance.microUsdc) - BigInt(baseline.microUsdc);
+    if (received > 0n) {
+      await printJson({
+        ...funding,
+        status: "funded",
+        balance,
+        received: { microUsdc: received.toString(), usdc: formatUsdMicros(received) }
+      });
+      return;
+    }
+  }
+  throw new CliError("Timed out waiting for a Base USDC balance increase. A transfer may still arrive; check the funding page or wallet balance.", {
+    ...funding,
+    reason: lastRpcError ? "balance_unavailable" : "timeout",
+    balance,
+    ...(lastRpcError ? { cause: lastRpcError } : {})
+  });
+}
+
 export async function walletCommand(args: ParsedArgs) {
   const subcommand = requireValue(args.positional[1], "wallet subcommand is required");
   rejectExtraPositionals(args, 2, `wallet ${subcommand}`);
@@ -273,13 +355,7 @@ export async function walletCommand(args: ParsedArgs) {
   }
 
   if (subcommand === "fund") {
-    const { name: signingName, address } = await resolveSigningWallet(args, config);
-    await printJson({
-      wallet: { name: signingName, address },
-      network: "base",
-      token: "USDC",
-      instructions: `Send Base USDC to this address from an exchange, bridge, or another wallet, then run h402 wallet balance --name ${signingName}.`
-    });
+    await fundWallet(args, config);
     return;
   }
 
@@ -491,7 +567,7 @@ function isPaymentSettlementPending(response: ApiResponse<unknown>) {
   return response.status === 409 && backendErrorCode(response.body) === "payment_settlement_pending";
 }
 
-function waitForPaymentSettlement(delayMs: number) {
+function delay(delayMs: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 }
 
@@ -606,7 +682,7 @@ export async function callCommand(args: ParsedArgs) {
     }
     for (const delayMs of PAYMENT_SETTLEMENT_RETRY_DELAYS_MS) {
       if (!isPaymentSettlementPending(paid)) break;
-      await waitForPaymentSettlement(delayMs);
+      await delay(delayMs);
       paid = await sendSignedRequest();
       if (isReplacementPaymentResponse(paid)) {
         throw automaticReplacementRefused(paid, idempotencyKey);

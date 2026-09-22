@@ -91,6 +91,16 @@ describe("help rendering", () => {
   it("subcommand help shows subcommand-specific flags", () => {
     expect(commandHelp(["wallet", "balance"])).toContain("--wallet");
   });
+
+  it("documents funding links and bounded waiting", () => {
+    const help = commandHelp(["wallet", "fund"]);
+    for (const flag of ["--amount", "--wait", "--timeout", "--api-url"]) expect(help).toContain(flag);
+    expect(() => assertKnownFlags(["wallet", "fund"], { amount: "5", wait: true, timeout: "300", "api-url": "https://example.com" })).not.toThrow();
+    for (const flag of ["amount", "timeout", "api-url"]) {
+      expect(() => assertKnownFlags(["wallet", "fund"], { [flag]: true })).toThrow(/requires a value/);
+      expect(() => assertKnownFlags(["wallet", "fund"], { [flag]: "" })).toThrow(/requires a value/);
+    }
+  });
 });
 
 describe("assertKnownFlags", () => {

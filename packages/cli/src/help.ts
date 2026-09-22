@@ -59,7 +59,19 @@ export const COMMANDS: Record<string, CommandSpec> = {
         flags: [FLAGS.name, FLAGS.wallet],
         examples: ["h402 wallet balance --name agent"]
       },
-      fund: { usage: "h402 wallet fund [flags]", summary: "Print the Base USDC deposit address for a wallet", flags: [FLAGS.name, FLAGS.wallet] }
+      fund: {
+        usage: "h402 wallet fund [flags]",
+        summary: "Share a Base USDC funding link and optionally wait for funds",
+        flags: [
+          FLAGS.name,
+          FLAGS.wallet,
+          FLAGS.apiUrl,
+          { name: "amount", value: "<usdc>", desc: "Suggested transfer amount (default 5; positive, up to 6 decimals)" },
+          { name: "wait", desc: "Wait for a balance increase (default on an interactive terminal)" },
+          { name: "timeout", value: "<seconds>", desc: "Maximum wait: 1–3600 seconds (default 300; used when waiting)" }
+        ],
+        examples: ["h402 wallet fund --name agent --amount 5", "h402 wallet fund --name agent --wait --timeout 300"]
+      }
     }
   },
   auth: {

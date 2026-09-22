@@ -35,13 +35,15 @@ h402 call ai/news                                      # free; omitted provider 
 # Set up a signer only when you want to call a route that returns a payable 402:
 h402 wallet list                                       # read-only native-binding preflight; [] is OK
 h402 wallet create --name agent
-h402 wallet fund --name agent
+h402 wallet fund --name agent --amount 5
 h402 call web/search --provider stableenrich-exa --name agent --json '{"query":"agent payments"}'
 ```
 
 Browsing, quoting, and free-route calls do not require a local wallet. Wallet creation creates a local signing wallet only; `h402 auth` creates the optional bonus-credit session. A funded local wallet is required only if the first response is a payable `402`.
 
 The CLI targets the production backend (`https://h402.hunt.town`) by default; set `H402_API_URL` or `--api-url` only when pointing at another backend such as local dev.
+
+`wallet fund` returns a `fundingUrl` for a human to open and send native USDC on Base, with a suggested amount of 5 USDC by default. Noninteractive runs return immediately; hand the link to the human, then run `h402 wallet fund --name agent --wait --timeout 300` to watch for a new balance increase. Interactive terminals wait automatically. Waiting ends after 300 seconds by default (configurable from 1 to 3600 seconds), and success reports the actual increase, even if the human sends a different amount. If the transfer has already arrived before waiting starts, use `h402 wallet balance` to check it. The CLI never opens a browser or transfers funds for this command.
 
 Set `"defaultWallet": "agent"` in the existing `~/.h402/config.json` to select a default local signing wallet. Explicit `--name` or `--wallet` takes precedence; without this setting, the default remains `h402`. The CLI fails if the selected wallet is missing rather than using a different wallet.
 

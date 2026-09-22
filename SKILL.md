@@ -54,13 +54,24 @@ h402 wallet create --name agent
 # -> {"wallet":{"name":"agent","address":"0x..."}}
 ```
 
-Fund it with **Base USDC**: send USDC (on Base) to that address from an exchange,
-bridge, or another wallet. `h402 wallet fund --name agent` prints the address and
-funding instructions; it does not depend on the OWS/MoonPay deposit flow. Then check it:
+Fund it with **native Base USDC**. Run `h402 wallet fund --name agent --amount 5`
+and hand the returned `fundingUrl` to the human. The amount is a suggested transfer,
+not a payment authorization. Noninteractive runs return immediately without RPC calls;
+interactive terminals show the link and wait automatically. Once the link is shared,
+explicitly wait for a new balance increase or check funds already received:
 
 ```bash
+h402 wallet fund --name agent --wait --timeout 300
 h402 wallet balance --name agent
 ```
+
+Waiting polls every 10 seconds for at most 300 seconds by default (`--timeout` accepts
+1–3600 seconds). It returns one JSON result with `status: "funded"`, `balance`, and
+the actual `received` increase from its starting balance; the human may send a different
+amount. A transfer that arrived before waiting started is part of that baseline, so use
+`wallet balance` to check it. Timeout and RPC errors are not proof a transfer failed;
+their structured error includes the funding link. The CLI does not sign a transfer or
+open a browser. `--api-url`/`H402_API_URL` also choose the funding page's origin.
 
 A few dollars of USDC covers hundreds of calls — most routes cost **$0.001–$0.05** each.
 
