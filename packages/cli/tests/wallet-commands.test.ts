@@ -114,14 +114,16 @@ describe("walletCommand balance/fund wallet selection", () => {
     });
   });
 
-  it("prints Base USDC funding instructions without invoking the broken OWS MoonPay flow", async () => {
+  it("prints a Base USDC funding link without invoking the OWS MoonPay flow", async () => {
     await walletCommand(args({ wallet: ADDR_AGENT }, "fund"));
 
     expect(printed(stdout)).toEqual({
       wallet: { name: "agent", address: ADDR_AGENT },
       network: "base",
       token: "USDC",
-      instructions: "Send Base USDC to this address from an exchange, bridge, or another wallet, then run h402 wallet balance --name agent."
+      suggestedAmount: "5",
+      fundingUrl: `https://h402.hunt.town/wallet/fund?address=${ADDR_AGENT}&amount=5`,
+      status: "awaiting_funds"
     });
   });
 

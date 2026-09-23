@@ -46,7 +46,7 @@ describe("doc examples stay runnable against the provider-pinned catalog contrac
     const text = readFileSync(DOC_FILES["package README.md"], "utf8");
     expect(text).toContain("| `--name <wallet>` | wallet create/address/balance/fund; auth; call |");
     expect(text).toContain("| `--wallet 0x...` | wallet address/balance/fund; auth; call |");
-    expect(text).toContain("| `--api-url <url>` | auth, credits, search, show, quote, call |");
+    expect(text).toContain("| `--api-url <url>` | wallet fund; auth, credits, search, show, quote, call |");
     expect(text).toContain("| `--passphrase [<s>]` | wallet create, auth, call |");
     expect(text).toContain("| `--no-passphrase` | wallet create, auth, call |");
     expect(text).not.toContain("| `--name <wallet>` | all |");

@@ -29,7 +29,7 @@ h402 call ai/news                                      # free; omitted provider 
 # Only for routes that answer with a payable 402:
 h402 wallet list                                     # read-only native-binding preflight; [] is OK
 h402 wallet create --name agent                      # local signing wallet
-h402 wallet fund --name agent                        # Base USDC address + instructions
+h402 wallet fund --name agent --amount 5             # share the funding link with a human
 h402 call web/search --provider stableenrich-exa --name agent --json '{"query":"agent APIs"}'
 ```
 
@@ -48,7 +48,7 @@ To select a default local signing wallet, add `"defaultWallet": "agent"` to your
 | `h402 wallet restore` | Re-adopt OWS wallets into `~/.h402/config.json` |
 | `h402 wallet address --name <n>` | Print the wallet address |
 | `h402 wallet balance --name <n>` | Show the wallet's structured Base USDC balance |
-| `h402 wallet fund --name <n>` | Print the Base USDC deposit address and funding instructions |
+| `h402 wallet fund --name <n>` | Share a Base USDC funding link; optionally wait for a new balance increase |
 | `h402 auth --name <n>` | Create an optional backend bonus-credit session with a wallet signature |
 | `h402 credits` | Show the bonus-credit balance for the signed-in session |
 | `h402 search <query>` | Search compact route/provider summaries |
@@ -64,7 +64,10 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 | --- | --- | --- |
 | `--name <wallet>` | wallet create/address/balance/fund; auth; call | Wallet to use (default: `defaultWallet` in config, otherwise `h402`) |
 | `--wallet 0x...` | wallet address/balance/fund; auth; call | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
-| `--api-url <url>` | auth, credits, search, show, quote, call | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`) |
+| `--api-url <url>` | wallet fund; auth, credits, search, show, quote, call | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`); funding links use its origin |
+| `--amount <usdc>` | wallet fund | Suggested positive transfer amount, up to 6 decimal places (default `5`) |
+| `--wait` | wallet fund | Wait for a new balance increase; automatic on interactive terminals |
+| `--timeout <seconds>` | wallet fund | Maximum time when waiting, from 1 to 3600 seconds (default `300`) |
 | `--json '{...}'` | quote, call | Request body (sets method to POST) |
 | `--query '{...}'` | quote, call | URL query params (GET); values must be strings/numbers/booleans |
 | `--provider <name>` | show, quote, call | Select a concrete provider; quote/call omission resolves the catalog default, while show omission lists all enabled providers |
@@ -115,6 +118,8 @@ confirms that the original authorization was not paid.
 ## Agents & automation
 
 Every command prints JSON to stdout — `search`, `show`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
+
+`wallet fund` returns `fundingUrl`, `suggestedAmount`, and `status: "awaiting_funds"` immediately in noninteractive use, without an RPC call. Share that link with the human, then use `h402 wallet fund --name agent --wait --timeout 300` to watch for funds. Interactive terminals print the link to stderr and wait automatically. Waiting reads the starting native Base USDC balance, polls every 10 seconds, and returns one JSON result with `status: "funded"`, `balance`, and `received` when the balance increases. The suggested amount only prefills the page: any positive increase is reported with its actual amount. Funds that arrived before the command started are already part of the baseline; use `h402 wallet balance` to check those. A timeout does not mean a transfer failed. RPC failures and timeouts exit non-zero with the funding link in `error.detail`, and the CLI never signs or broadcasts a funding transaction or opens a browser.
 
 A successful `call` is wrapped as `{ "data": <provider-native body>, "meta"?: <reserved envelope metadata>, "h402": <execution metadata> }` — `data` remains provider-native, optional `meta` remains reserved envelope metadata rather than normalized provider output, and `h402` includes the provider-pinned execution receipt plus CLI-added `cliProviderSelection`. `ledgerEntryId` is present for credit or x402-paid calls; `paymentTransaction` and CLI-added `signedAmount` are x402-payment-only fields; free calls omit all three. Optional `h402.followUp` describes async work. A failed call exits non-zero and writes `{ "error": { "message", "detail"? } }` to stderr; `detail` preserves the backend recovery body unchanged.
 
