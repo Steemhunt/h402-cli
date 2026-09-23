@@ -275,8 +275,10 @@ async function fundWallet(args: ParsedArgs, config: CliConfig) {
   }
   let balance = baseline;
   let lastRpcError: string | undefined;
+  // A slow baseline must leave time for a follow-up read within the original deadline.
+  const pollIntervalMs = Math.min(10_000, Math.max(1, (deadline - Date.now()) / 2));
   while (Date.now() < deadline) {
-    await delay(Math.min(10_000, timeoutMs / 2, deadline - Date.now()));
+    await delay(Math.min(pollIntervalMs, deadline - Date.now()));
     if (Date.now() >= deadline) break;
     try {
       balance = await readBalance();

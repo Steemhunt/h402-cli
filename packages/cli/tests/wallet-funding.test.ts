@@ -182,6 +182,42 @@ describe("wallet funding", () => {
     expect(getBaseUsdcBalance).toHaveBeenLastCalledWith(ADDR, { timeoutMs: 500 });
   });
 
+  it.each([
+    { timeout: "5", baselineMs: 3000 },
+    { timeout: "1", baselineMs: 600 }
+  ])("detects funds within a $timeout-second wait after a slow baseline", async ({ timeout, baselineMs }) => {
+    getBaseUsdcBalance.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, baselineMs));
+      return { microUsdc: "0", usdc: "0.000000" };
+    });
+    const task = walletCommand(args({ wait: true, timeout })).then(() => null, (error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(Number(timeout) * 1000);
+
+    expect(await task).toBeNull();
+    expect(getBaseUsdcBalance).toHaveBeenCalledTimes(2);
+    expect(getBaseUsdcBalance).toHaveBeenLastCalledWith(ADDR, { timeoutMs: (Number(timeout) * 1000 - baselineMs) / 2 });
+    expect(printed(stdout)).toMatchObject({ status: "funded", received: { microUsdc: "10000000", usdc: "10" } });
+    expect(stdout).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the original deadline and a fixed cadence after a slow baseline", async () => {
+    getBaseUsdcBalance.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return { microUsdc: "10000000", usdc: "10.000000" };
+    });
+    const settled = vi.fn();
+    const task = walletCommand(args({ wait: true, timeout: "5" })).then(settled, settled);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(settled).not.toHaveBeenCalled();
+    expect(getBaseUsdcBalance).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await task;
+
+    expect(settled).toHaveBeenCalledWith(expect.objectContaining({ detail: expect.objectContaining({ reason: "timeout", fundingUrl: FUNDING_URL }) }));
+    expect(getBaseUsdcBalance).toHaveBeenCalledTimes(2);
+    expect(stdout).not.toHaveBeenCalled();
+  });
+
   it("reports baseline RPC failure with the funding link and no false success", async () => {
     getBaseUsdcBalance.mockRejectedValue(new Error("RPC quorum failed"));
     await expect(walletCommand(args({ wait: true }))).rejects.toMatchObject({
