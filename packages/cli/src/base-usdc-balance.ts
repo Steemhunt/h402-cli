@@ -1,4 +1,5 @@
 import { BASE_CHAIN_ID, BASE_USDC_ADDRESS, USDC_DECIMALS } from "@h402/core";
+import { networkErrorMessage } from "./errors.js";
 
 export const BASE_RPC_URLS = [
   "https://base-rpc.publicnode.com",
@@ -45,10 +46,6 @@ function normalizeAddress(address: string) {
 export function balanceOfCalldata(address: string) {
   const normalized = normalizeAddress(address);
   return `0x${BALANCE_OF_SELECTOR}${normalized.slice(2).padStart(64, "0")}`;
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function jsonRpcErrorMessage(error: unknown) {
@@ -98,7 +95,7 @@ async function rpcBalance(url: string, calldata: string, fetchFn: RpcFetch, sign
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}${text ? `: ${text}` : ""}`);
+    throw new Error(`HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`);
   }
   let body: unknown;
   try {
@@ -109,21 +106,24 @@ async function rpcBalance(url: string, calldata: string, fetchFn: RpcFetch, sign
   return parseRpcBalance(body);
 }
 
-function quorumUnavailableError() {
-  return new Error("Base USDC balance is temporarily unavailable: RPC quorum failed; need two matching Base RPC responses.");
+function quorumUnavailableError(outcomes: string[], rpcHosts: readonly string[]) {
+  const diagnostics = outcomes.map((outcome, index) => `${rpcHosts[index]}: ${outcome.replace(/\s+/g, " ").slice(0, 200)}`).join("; ");
+  return new Error(`Base USDC balance is temporarily unavailable: RPC quorum failed; need two matching Base RPC responses. ${diagnostics}`);
 }
 
-function firstMatchingQuorum(calls: Promise<bigint>[], rpcUrls: readonly string[]) {
+function firstMatchingQuorum(calls: Promise<bigint>[], rpcHosts: readonly string[]) {
   return new Promise<bigint>((resolve, reject) => {
     let settled = 0;
     let finished = false;
     const values = new Map<string, { value: bigint; count: number }>();
+    const outcomes: string[] = [];
 
-    for (const call of calls) {
+    for (const [index, call] of calls.entries()) {
       call
         .then((value) => {
           if (finished) return;
           settled += 1;
+          outcomes[index] = `${value} microUSDC`;
           const key = value.toString();
           const entry = values.get(key) ?? { value, count: 0 };
           entry.count += 1;
@@ -133,17 +133,18 @@ function firstMatchingQuorum(calls: Promise<bigint>[], rpcUrls: readonly string[
             resolve(entry.value);
             return;
           }
-          if (settled === rpcUrls.length) {
+          if (settled === calls.length) {
             finished = true;
-            reject(quorumUnavailableError());
+            reject(quorumUnavailableError(outcomes, rpcHosts));
           }
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           if (finished) return;
           settled += 1;
-          if (settled === rpcUrls.length) {
+          outcomes[index] = networkErrorMessage(error);
+          if (settled === calls.length) {
             finished = true;
-            reject(quorumUnavailableError());
+            reject(quorumUnavailableError(outcomes, rpcHosts));
           }
         });
     }
@@ -162,6 +163,7 @@ export async function getBaseUsdcBalance(address: string, options: BalanceOption
   if (rpcUrls.length < 2) {
     throw new Error("At least two Base RPC URLs are required for quorum.");
   }
+  const rpcHosts = rpcUrls.map((url) => new URL(url).host);
   const fetchFn = options.fetchFn ?? fetch;
   const calldata = balanceOfCalldata(address);
   const timeoutMs = options.timeoutMs ?? RPC_TIMEOUT_MS;
@@ -169,12 +171,12 @@ export async function getBaseUsdcBalance(address: string, options: BalanceOption
   const timers = controllers.map((controller) => setTimeout(() => controller.abort(), timeoutMs));
   const calls = rpcUrls.map((url, index) =>
     rpcBalance(url, calldata, fetchFn, controllers[index].signal).catch((error) => {
-      throw new Error(`${url}: ${errorMessage(error)}`);
+      throw new Error(controllers[index].signal.aborted ? `timed out after ${timeoutMs}ms` : networkErrorMessage(error).replaceAll(url, rpcHosts[index]));
     })
   );
 
   try {
-    const microUsdc = await firstMatchingQuorum(calls, rpcUrls);
+    const microUsdc = await firstMatchingQuorum(calls, rpcHosts);
     return {
       microUsdc: microUsdc.toString(),
       usdc: formatUsdc(microUsdc)
