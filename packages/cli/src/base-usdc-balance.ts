@@ -1,4 +1,5 @@
 import { BASE_CHAIN_ID, BASE_USDC_ADDRESS, USDC_DECIMALS } from "@h402/core";
+import { fetch, type RequestInit, type Response } from "undici";
 import { networkErrorMessage } from "./errors.js";
 
 export const BASE_RPC_URLS = [
