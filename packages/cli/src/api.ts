@@ -1,5 +1,5 @@
 import { Agent, fetch, Headers as UndiciHeaders, type RequestInit, type Response } from "undici";
-import { CliError } from "./errors.js";
+import { CliError, networkErrorMessage } from "./errors.js";
 import { getVersion } from "./help.js";
 import { isRecord } from "./utils.js";
 
@@ -20,21 +20,6 @@ export type ApiResponse<T> = {
   body: T;
   headers: Headers;
 };
-
-function networkErrorMessage(error: unknown) {
-  const cause = isRecord(error) ? error.cause : undefined;
-  if (isRecord(cause)) {
-    const code = cause.code;
-    if (typeof code === "string" && code) {
-      return code;
-    }
-    const message = cause.message;
-    if (typeof message === "string" && message) {
-      return message;
-    }
-  }
-  return error instanceof Error ? error.message : String(error);
-}
 
 export async function requestJson<T>(
   backendUrl: string,

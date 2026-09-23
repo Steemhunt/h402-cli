@@ -1,3 +1,5 @@
+import { isRecord } from "./utils.js";
+
 // A CLI error that can carry structured `detail` (e.g. the backend's parsed JSON error
 // body) so the top-level handler can surface it in the machine-readable stderr envelope.
 export class CliError extends Error {
@@ -18,4 +20,14 @@ export function errorEnvelope(error: unknown): { error: { message: string; detai
     return { error: { message: error.message, detail: error.detail } };
   }
   return { error: { message: error instanceof Error ? error.message : String(error) } };
+}
+export function networkErrorMessage(error: unknown) {
+  const cause = isRecord(error) ? error.cause : undefined;
+  if (isRecord(cause)) {
+    const code = cause.code;
+    if (typeof code === "string" && code) return code;
+    const message = cause.message;
+    if (typeof message === "string" && message) return message;
+  }
+  return error instanceof Error ? error.message : String(error);
 }
