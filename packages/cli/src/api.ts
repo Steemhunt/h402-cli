@@ -44,17 +44,21 @@ export async function requestJson<T>(
   delete fetchInit.token;
   const url = `${backendUrl}${path}`;
   let response: Response;
+  let text: string;
   try {
     response = await fetch(url, {
       ...fetchInit,
       headers,
+      // A redirect can change the pinned provider, method, or recipient of a
+      // PAYMENT-SIGNATURE. Surface its status without sending another request.
+      redirect: "manual",
       dispatcher: h402FetchDispatcher
     });
+    text = await response.text();
   } catch (error) {
     throw new CliError(`Request to ${url} failed: ${networkErrorMessage(error)}`, { backendUrl, url });
   }
 
-  const text = await response.text();
   let body: T;
   try {
     body = text ? (JSON.parse(text) as T) : (null as T);
