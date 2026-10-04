@@ -91,7 +91,11 @@ Node 22.19+. ESM throughout.
 
 ## Releasing
 
-**Publish `@h402/core` before `@h402/cli`.** `@h402/cli` depends on `@h402/core` as a registry dependency, so core must be available on npm first or a clean `npm install -g @h402/cli` will fail to resolve it.
+**A release is complete only when both the npm package and its matching GitHub Release are published and verified.** npm publication does not create a GitHub Release automatically.
+
+Version packages independently. Publish a changed `@h402/core` before a CLI version that needs it; do not republish an unchanged core version. `@h402/cli` depends on core from the npm registry, so its required core version must already be available for a clean install to succeed.
+
+Bump the package version and lockfile, commit and push the release preparation to `main`, and publish from that clean commit after CI passes. Prepare concise English release notes covering changes since the previous published version and any compatibility changes.
 
 Before publishing, verify and smoke-test the packed artifacts:
 
@@ -101,6 +105,40 @@ npm run smoke:pack    # pack core+cli, install both into a clean project, run `h
 ```
 
 Each package's `prepack` builds `dist` automatically on `npm pack` / `npm publish`; `verify:pack` asserts the tarball contents so a clean checkout can never publish a package without its JS/types. `smoke:pack` goes further — it installs the packed core + cli into a throwaway prefix and runs `h402 --help`, catching install/entrypoint breakage (an unresolvable `@h402/core`, a broken bin) that an in-repo build would hide. (It runs only `--help`, so it does not cover OWS-binary resolution.) Both run in CI.
+
+Publish the prepared CLI package using the publisher's npm authentication:
+
+```bash
+npm publish --workspace @h402/cli --access public
+```
+
+After npm confirms publication, read the exact version's published source commit. If a human runs the npm command, resume these steps after they confirm success; handing off the publish command alone does not complete the release.
+
+```bash
+release_version=$(node -p "require('./packages/cli/package.json').version")
+release_commit=$(npm view "@h402/cli@$release_version" gitHead)
+git show "$release_commit:packages/cli/package.json"
+```
+
+Require a full, resolvable `gitHead` and confirm that the committed manifest has the expected package name and version. Stop if the npm version is absent or the source cannot be verified; never substitute the current `main` commit. Check any existing remote tag or Release before creating one: its tag must resolve to the same published commit. Never move an existing release tag.
+
+Save the reviewed English notes to `/tmp/h402-cli-release.md`, then create the matching GitHub Release:
+
+```bash
+release_latest=$(npm view @h402/cli dist-tags.latest)
+test "$release_version" = "$release_latest" &&
+test -n "$release_commit" &&
+gh release create "cli-v$release_version" \
+  --repo Steemhunt/h402-cli \
+  --target "$release_commit" \
+  --title "@h402/cli v$release_version" \
+  --notes-file /tmp/h402-cli-release.md \
+  --latest
+```
+
+Use `cli-v<version>` for CLI tags and `core-v<version>` for core tags. For core releases, use its workspace, manifest, npm package, notes file, and tag prefix, and pass `--latest=false`. Historical CLI releases also use `--latest=false`; only the CLI version matching npm's `latest` dist-tag should be marked Latest. Historical notes must state the original npm publication date, since the GitHub Release is being created later.
+
+Verify the published Release's title, notes, tag commit, and Latest status. If npm succeeded but GitHub failed, retry only the GitHub step after inspecting its current state. Do not bump or republish the npm package to retry Release creation.
 
 ## License
 
