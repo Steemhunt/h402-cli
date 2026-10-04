@@ -52,6 +52,30 @@ describe("callCommand free routes", () => {
     expect(getOwsWallet).not.toHaveBeenCalled();
   });
 
+  it.each(["network", "response body"])("warns about a possible credit charge after a lost %s response", async (stage) => {
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: { "https://test.example": "test-token" }, wallets: {} });
+    const failure = new Error("connection lost");
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      if (stage === "network") throw failure;
+      return { ...res(200, {}), text: async () => { throw failure; } };
+    }));
+
+    await expect(callCommand(args({ "idempotency-key": "original-key" }))).rejects.toMatchObject({
+      message: expect.stringContaining("do NOT sign or pay with a new idempotency key"),
+      detail: { idempotencyKey: "original-key" }
+    });
+    expect(getOwsWallet).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { "no-credit": true }])("does not add credit-charge guidance when the initial request has no bearer token: %j", async (flags) => {
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: flags["no-credit"] ? { "https://test.example": "test-token" } : {}, wallets: {} });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("connection lost"); }));
+
+    const error = await callCommand(args(flags)).catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).not.toContain("do NOT sign or pay");
+  });
+
   it("still requires a local wallet once the first response asks for payment", async () => {
     const challenge = { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", asset: BASE_USDC, amount: "1", payTo: ADDR, maxTimeoutSeconds: 60 }] };
     const fetch = vi.fn(async () => res(402, challenge));

@@ -32,7 +32,10 @@ function normalizeConfig(parsed: Record<string, unknown>): CliConfig {
     sessions: isRecord(parsed.sessions) ? (parsed.sessions as Record<string, string>) : {},
     wallets: isRecord(parsed.wallets) ? (parsed.wallets as CliConfig["wallets"]) : {}
   };
-  if (typeof parsed.maxUsd === "string") {
+  if (parsed.maxUsd !== undefined) {
+    if (typeof parsed.maxUsd !== "string") {
+      throw new Error('h402 config maxUsd must be a string amount, for example "0.05".');
+    }
     normalized.maxUsd = parsed.maxUsd;
   }
   if (parsed.defaultWallet !== undefined) {

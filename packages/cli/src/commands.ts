@@ -53,7 +53,7 @@ function explicitPassphrase(args: ParsedArgs) {
 const PASSPHRASE_MISMATCH = /decryption failed/i;
 
 async function promptBarePassphrase(options = { confirm: false }) {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!process.stdin.isTTY || !process.stderr.isTTY) {
     throw new Error("Bare --passphrase prompts interactively; pass --passphrase <s> or set H402_WALLET_PASSPHRASE in non-interactive use.");
   }
   return promptPassphrase(options);
@@ -86,7 +86,7 @@ export async function signWithWalletPassphrase<T>(
     if (flagBoolean(args.flags, "no-passphrase")) {
       throw new Error(`Wallet "${walletName}" is passphrase-protected, but --no-passphrase was passed.`);
     }
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    if (!process.stdin.isTTY || !process.stderr.isTTY) {
       throw new Error(`Wallet "${walletName}" is passphrase-protected. Set H402_WALLET_PASSPHRASE (or pass --passphrase <s>) for non-interactive use.`);
     }
     return sign(await promptPassphrase({ confirm: false }));
@@ -118,7 +118,7 @@ function withIdempotencyKey(error: unknown, idempotencyKey: string) {
 type ResolvedWallet = { name: string; address: string };
 
 function adoptWallet(config: CliConfig, name: string, address: string): ResolvedWallet {
-  config.wallets[name] = { address };
+  config.wallets = { ...config.wallets, [name]: { address } };
   return { name, address };
 }
 
@@ -644,6 +644,8 @@ export async function callCommand(args: ParsedArgs) {
       method,
       headers,
       body: requestBody
+    }).catch((error: unknown) => {
+      throw headers.authorization ? withSettlementRiskGuidance(error) : error;
     });
 
     if (isReplacementPaymentResponse(first)) {

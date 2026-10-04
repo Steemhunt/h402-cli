@@ -100,6 +100,16 @@ describe("loadConfig / updateConfig", () => {
     await expect(loadConfig()).resolves.toEqual(config);
   });
 
+  it.each([0.05, null, false, [], {}].map((maxUsd) => ({ maxUsd })))("rejects a non-string spending cap %j without overwriting it", async ({ maxUsd }) => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    const original = JSON.stringify({ maxUsd });
+    await writeFile(configFile, original);
+
+    await expect(loadConfig()).rejects.toThrow(/config maxUsd must be a string/);
+    await expect(updateConfig(() => undefined)).rejects.toThrow(/config maxUsd must be a string/);
+    expect(await readFile(configFile, "utf8")).toBe(original);
+  });
+
   it("preserves the default wallet when sessions and wallet mappings change", async () => {
     await updateConfig((config) => {
       config.defaultWallet = "agent";

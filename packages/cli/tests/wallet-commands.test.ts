@@ -152,6 +152,18 @@ describe("walletCommand balance/fund wallet selection", () => {
     expect(printed(stdout)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
   });
 
+  it("persists a wallet named __proto__ as an own config entry", async () => {
+    const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
+    loadConfig.mockResolvedValueOnce(config);
+    createOwsWallet.mockResolvedValueOnce({ name: "__proto__", address: ADDR_AGENT });
+
+    await walletCommand(args({ name: "__proto__" }, "create"));
+
+    expect(Object.hasOwn(config.wallets, "__proto__")).toBe(true);
+    expect(JSON.parse(JSON.stringify(updatedConfigs[0])).wallets).toEqual({ ["__proto__"]: { address: ADDR_AGENT } });
+    expect(Object.getPrototypeOf(config.wallets)).toBe(Object.prototype);
+  });
+
   it("re-adopts an OWS wallet by address when the h402 config mapping is missing", async () => {
     loadConfig.mockResolvedValueOnce({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} });
     listOwsWallets.mockResolvedValueOnce([{ name: "alt", address: ADDR_ALT.toUpperCase() }]);

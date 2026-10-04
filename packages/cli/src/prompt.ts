@@ -1,5 +1,5 @@
 async function promptHidden(question: string) {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!process.stdin.isTTY || !process.stderr.isTTY) {
     throw new Error(
       "Passphrase prompt requires an interactive terminal. Pass --no-passphrase if the wallet was created without one (the default agent setup), or set H402_WALLET_PASSPHRASE."
     );
@@ -7,7 +7,7 @@ async function promptHidden(question: string) {
 
   return new Promise<string>((resolve, reject) => {
     const stdin = process.stdin;
-    const stdout = process.stdout;
+    const stderr = process.stderr;
     const wasRaw = stdin.isRaw;
     const wasPaused = stdin.isPaused();
     let value = "";
@@ -23,7 +23,7 @@ async function promptHidden(question: string) {
     };
 
     const finish = () => {
-      stdout.write("\n");
+      stderr.write("\n");
       cleanup();
       resolve(value);
     };
@@ -31,7 +31,7 @@ async function promptHidden(question: string) {
     const onData = (chunk: Buffer | string) => {
       for (const char of chunk.toString("utf8")) {
         if (char === "\u0003") {
-          stdout.write("\n");
+          stderr.write("\n");
           cleanup();
           reject(new Error("Interrupted"));
           return;
@@ -51,7 +51,7 @@ async function promptHidden(question: string) {
       }
     };
 
-    stdout.write(question);
+    stderr.write(question);
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", onData);
