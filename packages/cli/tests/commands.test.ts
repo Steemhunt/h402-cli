@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveSigningWallet } from "../src/commands";
 import type { CliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
@@ -9,7 +9,7 @@ const { getOwsWallet, listOwsWallets } = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/config.js", () => ({
-  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} })),
+  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {} })),
   updateConfig: vi.fn(),
   backendUrl: () => "https://h402.hunt.town"
 }));
@@ -28,8 +28,7 @@ const ADDR_ALT = "0x2222222222222222222222222222222222222222";
 function config(): CliConfig {
   return {
     backendUrl: "https://h402.hunt.town",
-    sessions: {},
-    wallets: { h402: { address: ADDR_H402 }, alt: { address: ADDR_ALT } }
+    sessions: {}
   };
 }
 
@@ -40,6 +39,14 @@ function args(flags: Record<string, string>): ParsedArgs {
 // The signer is always the OWS wallet keyed by name; these guards keep the
 // request/challenge/payment address from ever diverging from that signer.
 describe("resolveSigningWallet", () => {
+  beforeEach(() => {
+    getOwsWallet.mockReset().mockImplementation(async (name: string) => {
+      if (!["h402", "alt"].includes(name)) throw new Error("wallet not found");
+      return { name, address: name === "alt" ? ADDR_ALT : ADDR_H402 };
+    });
+    listOwsWallets.mockReset().mockResolvedValue([{ name: "h402", address: ADDR_H402 }, { name: "alt", address: ADDR_ALT }]);
+  });
+
   it("defaults to the h402 wallet when no flags are passed", async () => {
     await expect(resolveSigningWallet(args({}), config())).resolves.toEqual({ name: "h402", address: ADDR_H402 });
   });
@@ -53,10 +60,10 @@ describe("resolveSigningWallet", () => {
   });
 
   it("does not fall back to h402 when the configured default wallet is missing", async () => {
-    await expect(resolveSigningWallet(args({}), { ...config(), defaultWallet: "ghost" })).rejects.toThrow(/No address known for wallet "ghost"/);
+    await expect(resolveSigningWallet(args({}), { ...config(), defaultWallet: "ghost" })).rejects.toThrow(/wallet not found/);
   });
 
-  it("re-adopts the configured default wallet from OWS when its mapping is missing", async () => {
+  it("reads the configured default wallet directly from OWS", async () => {
     getOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_ALT.toUpperCase() });
 
     await expect(resolveSigningWallet(args({}), { ...config(), defaultWallet: "agent" })).resolves.toEqual({ name: "agent", address: ADDR_ALT });
@@ -67,8 +74,8 @@ describe("resolveSigningWallet", () => {
     await expect(resolveSigningWallet(args({ name: "alt" }), config())).resolves.toEqual({ name: "alt", address: ADDR_ALT });
   });
 
-  it("errors when --name has no known local address", async () => {
-    await expect(resolveSigningWallet(args({ name: "ghost" }), config())).rejects.toThrow(/No address known for wallet "ghost"/);
+  it("errors when --name is absent from the native vault", async () => {
+    await expect(resolveSigningWallet(args({ name: "ghost" }), config())).rejects.toThrow(/wallet not found/);
   });
 
   it("selects the local wallet that owns the --wallet address (case-insensitive)", async () => {
@@ -76,7 +83,7 @@ describe("resolveSigningWallet", () => {
   });
 
   it("errors when the --wallet address is not owned by any local wallet", async () => {
-    await expect(resolveSigningWallet(args({ wallet: "0x9999999999999999999999999999999999999999" }), config())).rejects.toThrow(/No local wallet owns address/);
+    await expect(resolveSigningWallet(args({ wallet: "0x9999999999999999999999999999999999999999" }), config())).rejects.toThrow(/No local OWS wallet owns address/);
   });
 
   it("accepts --wallet and --name together when they agree", async () => {
@@ -85,5 +92,17 @@ describe("resolveSigningWallet", () => {
 
   it("errors before signing when --wallet does not match --name", async () => {
     await expect(resolveSigningWallet(args({ wallet: ADDR_H402, name: "alt" }), config())).rejects.toThrow(/does not match wallet "alt"/);
+  });
+
+  it("resolves a recreated wallet from its current native address each time", async () => {
+    await expect(resolveSigningWallet(args({}), config())).resolves.toEqual({ name: "h402", address: ADDR_H402 });
+    getOwsWallet.mockResolvedValueOnce({ name: "h402", address: ADDR_ALT });
+    await expect(resolveSigningWallet(args({}), config())).resolves.toEqual({ name: "h402", address: ADDR_ALT });
+  });
+
+  it.each(["native bindings unavailable", "permission denied", "vault is corrupt"])("propagates %s without falling back to another wallet", async (message) => {
+    getOwsWallet.mockRejectedValueOnce(new Error(message));
+    await expect(resolveSigningWallet(args({}), config())).rejects.toThrow(message);
+    expect(listOwsWallets).not.toHaveBeenCalled();
   });
 });

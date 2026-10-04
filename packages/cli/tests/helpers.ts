@@ -29,7 +29,7 @@ export function configMockFactory(mocks: { loadConfig: unknown; updateConfig?: u
 export function owsMockFactory(overrides: Record<string, unknown> = {}) {
   return {
     createOwsWallet: vi.fn(),
-    getOwsWallet: vi.fn(),
+    getOwsWallet: vi.fn(async (name: string) => ({ name, address: ADDR })),
     listOwsWallets: vi.fn(),
     signOwsMessage: vi.fn(),
     signOwsTypedData: vi.fn(),

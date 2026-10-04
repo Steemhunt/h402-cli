@@ -83,13 +83,22 @@ describe("help rendering", () => {
 
   it("wallet help lists subcommands", () => {
     const help = commandHelp(["wallet"]);
-    for (const sub of ["create", "list", "restore", "address", "balance", "fund"]) {
+    for (const sub of ["create", "list", "address", "balance", "fund"]) {
       expect(help).toContain(sub);
     }
+    expect(help).toContain("requires native bindings");
+    expect(help).not.toMatch(/restore|adopt/i);
+    expect(resolveCommandPath(["wallet", "restore"])).toEqual(["wallet"]);
   });
 
-  it("subcommand help shows subcommand-specific flags", () => {
-    expect(commandHelp(["wallet", "balance"])).toContain("--wallet");
+  it("documents live OWS name and address selection", () => {
+    for (const command of [["wallet", "address"], ["wallet", "balance"], ["wallet", "fund"], ["auth"], ["call"]]) {
+      const help = commandHelp(command);
+      expect(help).toContain("--wallet");
+      expect(help).toContain("config.defaultWallet, otherwise h402");
+      expect(help).toContain("existing wallets are resolved live");
+      expect(help).toContain("Current OWS wallet address (must agree with --name)");
+    }
   });
 
   it("documents funding links and bounded waiting", () => {

@@ -3,16 +3,17 @@ import type { CliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
 import { ADDR, BASE_USDC, configMockFactory, owsMockFactory, printed, res } from "./helpers";
 
-const { loadConfig, signOwsTypedData } = vi.hoisted(() => {
+const { loadConfig, getOwsWallet, signOwsTypedData } = vi.hoisted(() => {
   const signature = `0x${"11".repeat(65)}` as `0x${string}`;
   return {
     loadConfig: vi.fn(),
+    getOwsWallet: vi.fn(),
     signOwsTypedData: vi.fn(async () => signature)
   };
 });
 
 vi.mock("../src/config.js", () => configMockFactory({ loadConfig, backendUrl: "https://test.example" }));
-vi.mock("../src/ows.js", () => owsMockFactory({ signOwsTypedData }));
+vi.mock("../src/ows.js", () => owsMockFactory({ getOwsWallet, signOwsTypedData }));
 
 const { callCommand } = await import("../src/commands");
 
@@ -20,7 +21,6 @@ function config(overrides: Partial<CliConfig> = {}): CliConfig {
   return {
     backendUrl: "https://test.example",
     sessions: {},
-    wallets: { h402: { address: ADDR } },
     ...overrides
   };
 }
@@ -51,6 +51,7 @@ describe("callCommand --max-usd", () => {
   beforeEach(() => {
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     loadConfig.mockResolvedValue(config());
+    getOwsWallet.mockReset().mockImplementation(async (name: string) => ({ name, address: ADDR }));
   });
 
   afterEach(() => {
@@ -92,7 +93,8 @@ describe("callCommand --max-usd", () => {
 
   it("uses the configured wallet for both the payment signer and authorization address", async () => {
     const agentAddress = "0x2222222222222222222222222222222222222222";
-    loadConfig.mockResolvedValue(config({ defaultWallet: "agent", wallets: { h402: { address: ADDR }, agent: { address: agentAddress } } }));
+    loadConfig.mockResolvedValue(config({ defaultWallet: "agent" }));
+    getOwsWallet.mockResolvedValueOnce({ name: "agent", address: agentAddress });
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(res(402, challenge("50000")))
       .mockResolvedValueOnce(res(200, { data: { ok: true }, h402: { provider: "demo" } })));
@@ -100,6 +102,15 @@ describe("callCommand --max-usd", () => {
     await callCommand(args());
 
     expect(signOwsTypedData).toHaveBeenCalledWith("agent", expect.objectContaining({ message: expect.objectContaining({ from: agentAddress }) }), undefined);
+  });
+
+  it.each(["wallet not found", "native bindings unavailable", "vault is corrupt"])("does not sign or send a paid retry after %s", async (message) => {
+    getOwsWallet.mockRejectedValueOnce(new Error(message));
+    const fetch = vi.fn().mockResolvedValueOnce(res(402, challenge("50000")));
+    vi.stubGlobal("fetch", fetch);
+    await expect(callCommand(args())).rejects.toThrow(message);
+    expect(signOwsTypedData).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("derives the payment authorization clock from the first response Date header", async () => {

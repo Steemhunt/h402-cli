@@ -65,22 +65,30 @@ describe("doc examples stay runnable against the provider-pinned catalog contrac
   });
 
   it("keeps OWS native platform support and preflight guidance synchronized", () => {
-    const supported = "OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64.";
-    // Native-only operations are enumerated precisely: config-mapped wallets keep
-    // address/balance/fund working without bindings, so "manage wallets" is too broad.
+    const supported =
+      "All wallet commands, `h402 auth`, and signing a payable call require OWS native bindings, available only on macOS and glibc-based Linux, on x64 or arm64.";
     const unsupported =
-      "Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot create, list, restore, or auto-adopt wallets, run `h402 auth`, or sign a payable call until OWS ships a matching native binding.";
-    const configMapped =
-      "`wallet address`, `wallet balance`, and `wallet fund` keep working for wallets already mapped in `~/.h402/config.json` — but USDC funded from an unsupported host can only be spent by signing on a supported platform.";
+      "Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `show`, `quote`, and free-route `call`, but cannot run wallet commands, `h402 auth`, or sign a payable call until OWS ships a matching native binding.";
     const preflight = "Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.";
     for (const file of Object.values(DOC_FILES)) {
       const text = readFileSync(file, "utf8");
       expect(text).toContain(supported);
       expect(text).toContain(unsupported);
-      expect(text).toContain(configMapped);
       expect(text).toContain(preflight);
       expect(text).not.toMatch(/bundles? (?:the )?`?ows`? wallet binary/i);
-      expect(text).not.toMatch(/cannot manage wallets/i);
+      expect(text).not.toMatch(/wallet restore|adopt|wallets already mapped|known wallet addresses/i);
+    }
+  });
+
+  it("documents live OWS selection with a default wallet preference", () => {
+    for (const file of Object.values(DOC_FILES)) {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain('"defaultWallet": "agent"');
+      expect(text).toContain("Explicit `--name` or `--wallet` takes precedence");
+      expect(text).toContain("OWS is the live source for wallet names and addresses; the CLI does not cache wallet addresses in config.");
+      expect(text).toContain("`--name` resolves the current OWS wallet by name");
+      expect(text).toContain("`--wallet` selects the OWS wallet that currently owns that address");
+      expect(text).toContain("If both are passed, they must agree.");
     }
   });
 

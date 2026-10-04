@@ -23,7 +23,7 @@ describe("callCommand free routes", () => {
 
   beforeEach(() => {
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {}, wallets: {} });
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {} });
     getOwsWallet.mockRejectedValue(new Error("wallet not found"));
     listOwsWallets.mockResolvedValue([]);
   });
@@ -38,7 +38,7 @@ describe("callCommand free routes", () => {
   });
 
   it("does not require a local wallet before a free first response", async () => {
-    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {}, wallets: {}, defaultWallet: "missing" });
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {}, defaultWallet: "missing" });
     const fetch = vi.fn(async () => res(200, { status: "complete" }));
     vi.stubGlobal("fetch", fetch);
 
@@ -53,7 +53,7 @@ describe("callCommand free routes", () => {
   });
 
   it.each(["network", "response body"])("warns about a possible credit charge after a lost %s response", async (stage) => {
-    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: { "https://test.example": "test-token" }, wallets: {} });
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: { "https://test.example": "test-token" } });
     const failure = new Error("connection lost");
     vi.stubGlobal("fetch", vi.fn(async () => {
       if (stage === "network") throw failure;
@@ -68,7 +68,7 @@ describe("callCommand free routes", () => {
   });
 
   it.each([{}, { "no-credit": true }])("does not add credit-charge guidance when the initial request has no bearer token: %j", async (flags) => {
-    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: flags["no-credit"] ? { "https://test.example": "test-token" } : {}, wallets: {} });
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: flags["no-credit"] ? { "https://test.example": "test-token" } : {} });
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("connection lost"); }));
 
     const error = await callCommand(args(flags)).catch((thrown: unknown) => thrown);
@@ -84,7 +84,7 @@ describe("callCommand free routes", () => {
     const error = await callCommand(args()).catch((thrown: unknown) => thrown);
 
     expect(error).toMatchObject({
-      message: expect.stringMatching(/No address known for wallet "h402"/),
+      message: expect.stringMatching(/wallet not found/),
       detail: {
         h402: {
           cliProviderSelection: {

@@ -84,8 +84,7 @@ describe("callCommand pending settlement reconciliation", () => {
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     loadConfig.mockResolvedValue({
       backendUrl: "https://test.example",
-      sessions: {},
-      wallets: { h402: { address: ADDR } }
+      sessions: {}
     });
   });
 

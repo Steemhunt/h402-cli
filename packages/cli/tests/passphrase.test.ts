@@ -5,7 +5,7 @@ import { assertKnownFlags } from "../src/help";
 import { parseArgs, type ParsedArgs } from "../src/utils";
 
 vi.mock("../src/config.js", () => ({
-  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} })),
+  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {} })),
   updateConfig: vi.fn(),
   backendUrl: () => "https://h402.hunt.town"
 }));

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CliError, errorEnvelope } from "../src/errors";
 import type { ParsedArgs } from "../src/utils";
-import { ADDR, configMockFactory, res } from "./helpers";
+import { configMockFactory, res } from "./helpers";
 
 const { loadConfig } = vi.hoisted(() => ({ loadConfig: vi.fn() }));
 
@@ -24,7 +24,7 @@ describe("quote/call exit codes on backend responses", () => {
 
   beforeEach(() => {
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {}, wallets: { h402: { address: ADDR } } });
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {} });
   });
 
   afterEach(() => {
