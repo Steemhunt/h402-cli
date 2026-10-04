@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { assertKnownFlags } from "../src/help";
 import { buildProxyPath, parseArgs, parseJsonFlag, parseQueryFlag, printJson, resolveMethod } from "../src/utils";
 
 describe("printJson", () => {
@@ -44,6 +45,13 @@ describe("parseArgs", () => {
       positional: ["quote", "weather/current"],
       flags: { query: '{"q":"Seoul"}', provider: "weatherkit" }
     });
+  });
+
+  it.each(["--__proto__", "--__proto__=unexpected"])("preserves %s so flag validation rejects it", (flag) => {
+    const { flags } = parseArgs(["call", "web/search", flag]);
+
+    expect(Object.hasOwn(flags, "__proto__")).toBe(true);
+    expect(() => assertKnownFlags(["call"], flags)).toThrow("Unknown flag: --__proto__");
   });
 });
 

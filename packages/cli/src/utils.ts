@@ -17,7 +17,7 @@ export function mergeH402(body: unknown, patch: Record<string, unknown>) {
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
-  const flags: Record<string, string | boolean> = {};
+  const flags: Record<string, string | boolean> = Object.create(null);
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
