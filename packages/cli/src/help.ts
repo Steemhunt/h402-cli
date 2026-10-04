@@ -17,8 +17,8 @@ type CommandSpec = {
 // Reusable flag definitions (DRY: declared once, referenced by each command that
 // accepts them — mirrors the README flags table).
 const FLAGS = {
-  name: { name: "name", value: "<wallet>", desc: "Wallet to use (default: config.defaultWallet, otherwise h402)" },
-  wallet: { name: "wallet", value: "0x...", desc: "Local wallet that owns this address (must agree with --name)" },
+  name: { name: "name", value: "<wallet>", desc: "OWS wallet name (default: config.defaultWallet, otherwise h402); existing wallets are resolved live" },
+  wallet: { name: "wallet", value: "0x...", desc: "Current OWS wallet address (must agree with --name)" },
   apiUrl: { name: "api-url", value: "<url>", desc: "Backend base URL (or H402_API_URL; default https://h402.hunt.town)" },
   json: { name: "json", value: "'{...}'", desc: "Request body (sets method to POST)" },
   query: { name: "query", value: "'{...}'", desc: "URL query params; values must be string/number/boolean" },
@@ -40,8 +40,8 @@ const FLAGS = {
 
 export const COMMANDS: Record<string, CommandSpec> = {
   wallet: {
-    usage: "h402 wallet <create|list|restore|address|balance|fund> [flags]",
-    summary: "Manage local non-custodial wallets",
+    usage: "h402 wallet <create|list|address|balance|fund> [flags]",
+    summary: "Manage local OWS wallets (requires native bindings)",
     flags: [],
     subcommands: {
       create: {
@@ -50,9 +50,8 @@ export const COMMANDS: Record<string, CommandSpec> = {
         flags: [FLAGS.name, FLAGS.passphrase, FLAGS.noPassphrase],
         examples: ["h402 wallet create --name agent"]
       },
-      list: { usage: "h402 wallet list", summary: "List OWS wallets", flags: [] },
-      restore: { usage: "h402 wallet restore", summary: "Re-adopt OWS wallets into h402 config", flags: [] },
-      address: { usage: "h402 wallet address [flags]", summary: "Print a wallet address", flags: [FLAGS.name, FLAGS.wallet] },
+      list: { usage: "h402 wallet list", summary: "List current OWS wallets", flags: [] },
+      address: { usage: "h402 wallet address [flags]", summary: "Print the current OWS wallet address", flags: [FLAGS.name, FLAGS.wallet] },
       balance: {
         usage: "h402 wallet balance [flags]",
         summary: "Show a wallet's Base USDC balance",

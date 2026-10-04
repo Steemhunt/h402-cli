@@ -1,10 +1,11 @@
+import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPassphrase, signWithWalletPassphrase, walletCommand } from "../src/commands";
 import { assertKnownFlags } from "../src/help";
 import { parseArgs, type ParsedArgs } from "../src/utils";
 
 vi.mock("../src/config.js", () => ({
-  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} })),
+  loadConfig: vi.fn(async () => ({ backendUrl: "https://h402.hunt.town", sessions: {} })),
   updateConfig: vi.fn(),
   backendUrl: () => "https://h402.hunt.town"
 }));
@@ -114,6 +115,51 @@ describe("createPassphrase", () => {
 
   it("lets --no-passphrase override a bare --passphrase without prompting", async () => {
     await expect(createPassphrase(args({ "no-passphrase": true, passphrase: true }))).resolves.toBeUndefined();
+  });
+});
+
+function mockPassphraseTerminal() {
+  const stdin = Object.assign(new EventEmitter(), {
+    isTTY: true, isRaw: false, isPaused: () => true,
+    setRawMode: vi.fn(), resume: vi.fn(), pause: vi.fn()
+  });
+  const stdout = { isTTY: false, write: vi.fn(() => true) };
+  const stderr = { isTTY: true, write: vi.fn(() => true) };
+  vi.spyOn(process, "stdin", "get").mockReturnValue(stdin as unknown as typeof process.stdin);
+  vi.spyOn(process, "stdout", "get").mockReturnValue(stdout as unknown as typeof process.stdout);
+  vi.spyOn(process, "stderr", "get").mockReturnValue(stderr as unknown as typeof process.stderr);
+  return { stdin, stdout, stderr };
+}
+
+describe("interactive passphrases with JSON stdout redirected", () => {
+  it("keeps create and confirmation prompts on stderr and does not echo the passphrase", async () => {
+    const { stdin, stdout, stderr } = mockPassphraseTerminal();
+    const prompted = createPassphrase(args({ passphrase: true }));
+    const assertion = expect(prompted).resolves.toBe("secret");
+    stdin.emit("data", "secret\n");
+    await vi.waitFor(() => expect(stderr.write).toHaveBeenCalledWith("Confirm wallet passphrase: "));
+    stdin.emit("data", "secret\n");
+    await assertion;
+
+    expect(stdout.write).not.toHaveBeenCalled();
+    expect(stderr.write.mock.calls.map(([text]) => text).join("")).toBe("Wallet passphrase: \nConfirm wallet passphrase: \n");
+    expect(stdin.listenerCount("data")).toBe(0);
+    expect(stdin.setRawMode).toHaveBeenLastCalledWith(false);
+  });
+
+  it("prompts a protected signing wallet through the terminal on stderr", async () => {
+    const { stdin, stdout, stderr } = mockPassphraseTerminal();
+    const sign = vi.fn().mockRejectedValueOnce(DECRYPTION_FAILED).mockResolvedValueOnce("0xsig");
+    const signing = signWithWalletPassphrase(args(), "vault", sign);
+    const assertion = expect(signing).resolves.toBe("0xsig");
+    await Promise.resolve();
+    stdin.emit("data", "secret\n");
+    await assertion;
+
+    expect(sign).toHaveBeenLastCalledWith("secret");
+    expect(stdout.write).not.toHaveBeenCalled();
+    expect(stderr.write).toHaveBeenCalledWith("Wallet passphrase: ");
+    expect(stdin.listenerCount("data")).toBe(0);
   });
 });
 

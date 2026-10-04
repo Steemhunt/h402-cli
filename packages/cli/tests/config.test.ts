@@ -10,7 +10,7 @@ import { deadOwner } from "./helpers";
 const PROD_URL = "https://h402.hunt.town";
 
 function configWith(backend?: string): CliConfig {
-  return { backendUrl: backend as string, sessions: {}, wallets: {} };
+  return { backendUrl: backend as string, sessions: {} };
 }
 
 describe("backendUrl resolution", () => {
@@ -75,13 +75,13 @@ describe("loadConfig / updateConfig", () => {
   });
 
   it("returns defaults when no config file exists (first run)", async () => {
-    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {} });
   });
 
   it("does not persist a one-shot H402_API_URL in the default config snapshot", async () => {
     process.env.H402_API_URL = "https://staging.example";
 
-    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {} });
     await updateConfig(() => undefined);
 
     const saved = JSON.parse(await readFile(configFile, "utf8"));
@@ -92,7 +92,6 @@ describe("loadConfig / updateConfig", () => {
     const config: CliConfig = {
       backendUrl: "https://staging.example",
       sessions: { "https://staging.example": "tok" },
-      wallets: { h402: { address: "0xabc" } },
       defaultWallet: "h402",
       maxUsd: "0.05"
     };
@@ -100,20 +99,35 @@ describe("loadConfig / updateConfig", () => {
     await expect(loadConfig()).resolves.toEqual(config);
   });
 
-  it("preserves the default wallet when sessions and wallet mappings change", async () => {
+  it("does not load or persist obsolete wallet address mappings", async () => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    await writeFile(configFile, JSON.stringify({ defaultWallet: "agent", wallets: { agent: { address: "0xabc" } } }));
+    expect(await loadConfig()).toEqual({ backendUrl: PROD_URL, sessions: {}, defaultWallet: "agent" });
+    await updateConfig((config) => { config.sessions[PROD_URL] = "tok"; });
+    expect(JSON.parse(await readFile(configFile, "utf8"))).toEqual({ backendUrl: PROD_URL, sessions: { [PROD_URL]: "tok" }, defaultWallet: "agent" });
+  });
+
+  it.each([0.05, null, false, [], {}].map((maxUsd) => ({ maxUsd })))("rejects a non-string spending cap %j without overwriting it", async ({ maxUsd }) => {
+    await mkdir(path.dirname(configFile), { recursive: true });
+    const original = JSON.stringify({ maxUsd });
+    await writeFile(configFile, original);
+
+    await expect(loadConfig()).rejects.toThrow(/config maxUsd must be a string/);
+    await expect(updateConfig(() => undefined)).rejects.toThrow(/config maxUsd must be a string/);
+    expect(await readFile(configFile, "utf8")).toBe(original);
+  });
+
+  it("preserves the default wallet when session settings change", async () => {
     await updateConfig((config) => {
       config.defaultWallet = "agent";
-      config.wallets.agent = { address: "0xabc" };
     });
     await updateConfig((config) => {
       config.sessions[PROD_URL] = "tok";
-      config.wallets.other = { address: "0xdef" };
     });
 
     await expect(loadConfig()).resolves.toMatchObject({
       defaultWallet: "agent",
-      sessions: { [PROD_URL]: "tok" },
-      wallets: { agent: { address: "0xabc" }, other: { address: "0xdef" } }
+      sessions: { [PROD_URL]: "tok" }
     });
   });
 
@@ -277,7 +291,7 @@ describe("loadConfig / updateConfig", () => {
 
     await expect(
       updateConfig((config) => {
-        config.wallets.recovered = { address: "0xabc" };
+        config.sessions[PROD_URL] = "recovered";
       })
     ).rejects.toThrow(/lock has no valid owner metadata.*If no h402 process is writing config, remove this lock path and retry/);
 
@@ -388,21 +402,21 @@ describe("loadConfig / updateConfig", () => {
     await mkdir(path.dirname(configFile), { recursive: true });
     // Empty object: every field defaults.
     await writeFile(configFile, "{}");
-    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
-    // Mistyped sessions/wallets and backendUrl fall back to safe defaults.
-    await writeFile(configFile, JSON.stringify({ backendUrl: 5, sessions: "nope", wallets: [] }));
-    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: {} });
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {} });
+    // Mistyped sessions and backendUrl fall back to safe defaults.
+    await writeFile(configFile, JSON.stringify({ backendUrl: 5, sessions: "nope" }));
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {} });
   });
 
-  it("keeps valid sessions/wallets while defaulting a missing field", async () => {
+  it("keeps valid sessions while defaulting a missing field", async () => {
     await mkdir(path.dirname(configFile), { recursive: true });
-    await writeFile(configFile, JSON.stringify({ wallets: { h402: { address: "0xabc" } } }));
-    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: {}, wallets: { h402: { address: "0xabc" } } });
+    await writeFile(configFile, JSON.stringify({ sessions: { [PROD_URL]: "tok" } }));
+    await expect(loadConfig()).resolves.toEqual({ backendUrl: PROD_URL, sessions: { [PROD_URL]: "tok" } });
   });
 
   it.skipIf(process.platform === "win32")("tightens pre-existing config permissions during load", async () => {
     await mkdir(path.dirname(configFile), { recursive: true, mode: 0o755 });
-    await writeFile(configFile, JSON.stringify({ backendUrl: PROD_URL, sessions: { [PROD_URL]: "tok" }, wallets: {} }), { mode: 0o644 });
+    await writeFile(configFile, JSON.stringify({ backendUrl: PROD_URL, sessions: { [PROD_URL]: "tok" } }), { mode: 0o644 });
     await chmod(path.dirname(configFile), 0o755);
     await chmod(configFile, 0o644);
 

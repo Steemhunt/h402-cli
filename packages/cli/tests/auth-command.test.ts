@@ -3,13 +3,12 @@ import type { CliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
 import { configMockFactory, owsMockFactory } from "./helpers";
 
-const { loadConfig, updateConfig, signOwsMessage, updatedConfigs, ADDR } = vi.hoisted(() => {
+const { loadConfig, updateConfig, getOwsWallet, signOwsMessage, updatedConfigs, ADDR } = vi.hoisted(() => {
   const ADDR = "0x1111111111111111111111111111111111111111";
   const updatedConfigs: CliConfig[] = [];
   const config = (): CliConfig => ({
     backendUrl: "https://test.example",
-    sessions: {},
-    wallets: { h402: { address: ADDR } }
+    sessions: {}
   });
   const loadConfig = vi.fn(async () => config());
   const updateConfig = vi.fn(async (update: (config: CliConfig) => void | CliConfig | Promise<void | CliConfig>) => {
@@ -22,6 +21,7 @@ const { loadConfig, updateConfig, signOwsMessage, updatedConfigs, ADDR } = vi.ho
   return {
     loadConfig,
     updateConfig,
+    getOwsWallet: vi.fn(),
     signOwsMessage: vi.fn(async () => "0xsigned"),
     updatedConfigs,
     ADDR
@@ -31,7 +31,7 @@ const { loadConfig, updateConfig, signOwsMessage, updatedConfigs, ADDR } = vi.ho
 vi.mock("../src/config.js", () => configMockFactory({ loadConfig, updateConfig, backendUrl: "https://test.example" }));
 vi.mock("../src/ows.js", () =>
   owsMockFactory({
-    getOwsWallet: vi.fn(async () => ({ name: "h402", address: ADDR })),
+    getOwsWallet,
     listOwsWallets: vi.fn(async () => []),
     signOwsMessage
   })
@@ -59,6 +59,7 @@ describe("authCommand", () => {
     loadConfig.mockClear();
     updateConfig.mockClear();
     signOwsMessage.mockClear();
+    getOwsWallet.mockReset().mockImplementation(async (name: string) => ({ name, address: ADDR }));
     updatedConfigs.length = 0;
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     vi.stubGlobal(
@@ -89,12 +90,27 @@ describe("authCommand", () => {
     loadConfig.mockResolvedValueOnce({
       backendUrl: "https://test.example",
       sessions: {},
-      wallets: { agent: { address: ADDR } },
       defaultWallet: "agent"
     });
 
     await authCommand(args());
 
     expect(signOwsMessage).toHaveBeenCalledWith("agent", "sign me", undefined);
+  });
+
+  it("authenticates the current native address for a recreated wallet name", async () => {
+    const address = "0x2222222222222222222222222222222222222222";
+    getOwsWallet.mockResolvedValueOnce({ name: "h402", address });
+    await authCommand(args());
+    expect(globalThis.fetch).toHaveBeenCalledWith("https://test.example/api/auth/challenge", expect.objectContaining({ body: JSON.stringify({ address }) }));
+    expect(globalThis.fetch).toHaveBeenCalledWith("https://test.example/api/auth/verify", expect.objectContaining({ body: JSON.stringify({ address, message: "sign me", signature: "0xsigned" }) }));
+  });
+
+  it.each(["wallet not found", "native bindings unavailable", "permission denied"])("stops authentication on %s before signing or making requests", async (message) => {
+    getOwsWallet.mockRejectedValueOnce(new Error(message));
+    await expect(authCommand(args())).rejects.toThrow(message);
+    expect(signOwsMessage).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(updateConfig).not.toHaveBeenCalled();
   });
 });

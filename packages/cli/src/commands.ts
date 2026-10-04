@@ -53,7 +53,7 @@ function explicitPassphrase(args: ParsedArgs) {
 const PASSPHRASE_MISMATCH = /decryption failed/i;
 
 async function promptBarePassphrase(options = { confirm: false }) {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!process.stdin.isTTY || !process.stderr.isTTY) {
     throw new Error("Bare --passphrase prompts interactively; pass --passphrase <s> or set H402_WALLET_PASSPHRASE in non-interactive use.");
   }
   return promptPassphrase(options);
@@ -86,7 +86,7 @@ export async function signWithWalletPassphrase<T>(
     if (flagBoolean(args.flags, "no-passphrase")) {
       throw new Error(`Wallet "${walletName}" is passphrase-protected, but --no-passphrase was passed.`);
     }
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    if (!process.stdin.isTTY || !process.stderr.isTTY) {
       throw new Error(`Wallet "${walletName}" is passphrase-protected. Set H402_WALLET_PASSPHRASE (or pass --passphrase <s>) for non-interactive use.`);
     }
     return sign(await promptPassphrase({ confirm: false }));
@@ -117,11 +117,6 @@ function withIdempotencyKey(error: unknown, idempotencyKey: string) {
 
 type ResolvedWallet = { name: string; address: string };
 
-function adoptWallet(config: CliConfig, name: string, address: string): ResolvedWallet {
-  config.wallets[name] = { address };
-  return { name, address };
-}
-
 function rejectExtraPositionals(args: ParsedArgs, maxPositionals: number, commandForHelp: string, hint?: string) {
   const extra = args.positional.slice(maxPositionals);
   if (extra.length === 0) {
@@ -132,91 +127,29 @@ function rejectExtraPositionals(args: ParsedArgs, maxPositionals: number, comman
   throw new Error(`${label}: ${rendered}. ${hint ?? `Run: h402 ${commandForHelp} --help`}`);
 }
 
-function isMissingOwsWalletError(error: unknown) {
-  return error instanceof Error && /(?:not found|does not exist|no wallet|unknown wallet|wallet .* missing)/i.test(error.message);
-}
-
 function isExistingOwsWalletError(error: unknown) {
   return error instanceof Error && /already exists/i.test(error.message);
 }
 
-async function adoptOwsWalletByName(name: string, config: CliConfig): Promise<ResolvedWallet | undefined> {
-  try {
-    const wallet = await getOwsWallet(name);
-    const resolved = adoptWallet(config, wallet.name || name, wallet.address.toLowerCase());
-    await updateConfig((current) => {
-      adoptWallet(current, resolved.name, resolved.address);
-    });
-    return resolved;
-  } catch (error) {
-    if (isMissingOwsWalletError(error)) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-async function adoptOwsWalletByAddress(address: string, config: CliConfig): Promise<ResolvedWallet | undefined> {
-  const wallets = await listOwsWallets();
-  const match = wallets.find((wallet) => wallet.address.toLowerCase() === address);
-  if (!match) return undefined;
-  const resolved = adoptWallet(config, match.name, match.address.toLowerCase());
-  await updateConfig((current) => {
-    adoptWallet(current, resolved.name, resolved.address);
-  });
-  return resolved;
-}
-
-function normalizeOwsWallets(wallets: ResolvedWallet[]) {
-  return wallets.map((wallet) => ({ name: wallet.name, address: wallet.address.toLowerCase() }));
-}
-
-async function restoreOwsWallets(config: CliConfig) {
-  const wallets = await listOwsWallets();
-  let changed = false;
-  const restored = normalizeOwsWallets(wallets);
-  for (const wallet of restored) {
-    if (config.wallets[wallet.name]?.address?.toLowerCase() !== wallet.address) {
-      adoptWallet(config, wallet.name, wallet.address);
-      changed = true;
-    }
-  }
-  if (changed) {
-    await updateConfig((current) => {
-      for (const wallet of restored) {
-        adoptWallet(current, wallet.name, wallet.address);
-      }
-    });
-  }
-  return restored;
-}
-
-// Resolve the wallet that will BOTH sign and own the request address, so the two
-// can never silently diverge. The OWS signer is keyed by wallet *name*, so the
-// address presented upstream must be that wallet's address — not an unrelated
-// `--wallet` string. `--name` selects by name; `--wallet` selects the local
-// wallet that owns that address; if both are given they must agree.
+// Read the current wallet directly from OWS for every wallet operation.
+// `--name` selects by name; `--wallet` pins a current native wallet address.
+// Both selectors must agree; CLI config only provides the default name.
 export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig): Promise<{ name: string; address: string }> {
   config ??= await loadConfig();
   const explicitAddress = flagString(args.flags, "wallet")?.toLowerCase();
   const explicitName = flagString(args.flags, "name");
 
   if (explicitAddress && !explicitName) {
-    const owner = Object.entries(config.wallets).find(([, wallet]) => wallet.address?.toLowerCase() === explicitAddress);
+    const owner = (await listOwsWallets()).find((wallet) => wallet.address.toLowerCase() === explicitAddress);
     if (!owner) {
-      const adopted = await adoptOwsWalletByAddress(explicitAddress, config);
-      if (adopted) return adopted;
-      throw new Error(`No local wallet owns address ${explicitAddress}. Create it (h402 wallet create), run h402 wallet restore to re-adopt existing OWS wallets, or select one with --name.`);
+      throw new Error(`No local OWS wallet owns address ${explicitAddress}. Run h402 wallet list to inspect current wallets, or select one with --name.`);
     }
-    return { name: owner[0], address: explicitAddress };
+    return { name: owner.name, address: explicitAddress };
   }
 
   const name = walletName(args, config);
-  const address = config.wallets[name]?.address?.toLowerCase();
-  const resolved = address ? { name, address } : await adoptOwsWalletByName(name, config);
-  if (!resolved) {
-    throw new Error(`No address known for wallet "${name}". Run: h402 wallet create --name ${name}, or h402 wallet restore to re-adopt existing OWS wallets.`);
-  }
+  const wallet = await getOwsWallet(name);
+  const resolved = { name: wallet.name, address: wallet.address.toLowerCase() };
   if (explicitAddress && explicitAddress !== resolved.address) {
     throw new Error(`--wallet ${explicitAddress} does not match wallet "${name}" (${resolved.address}). Omit --wallet or pass the wallet that owns this address.`);
   }
@@ -318,14 +251,10 @@ export async function walletCommand(args: ParsedArgs) {
       wallet = await createOwsWallet(name, await createPassphrase(args));
     } catch (error) {
       if (isExistingOwsWalletError(error)) {
-        throw new Error(`Wallet "${name}" already exists in the OWS vault. Run: h402 wallet address --name ${name} to re-adopt and print it, or h402 wallet restore to re-adopt all OWS wallets.`);
+        throw new Error(`Wallet "${name}" already exists in the OWS vault. Run: h402 wallet address --name ${name} to print its current address.`);
       }
       throw error;
     }
-    adoptWallet(config, name, wallet.address);
-    await updateConfig((current) => {
-      adoptWallet(current, name, wallet.address);
-    });
     await printJson({ wallet: { name, address: wallet.address } });
     return;
   }
@@ -336,12 +265,7 @@ export async function walletCommand(args: ParsedArgs) {
   }
 
   if (subcommand === "list") {
-    await printJson({ wallets: normalizeOwsWallets(await listOwsWallets()) });
-    return;
-  }
-
-  if (subcommand === "restore") {
-    await printJson({ wallets: await restoreOwsWallets(config) });
+    await printJson({ wallets: (await listOwsWallets()).map(({ name, address }) => ({ name, address: address.toLowerCase() })) });
     return;
   }
 
@@ -644,6 +568,8 @@ export async function callCommand(args: ParsedArgs) {
       method,
       headers,
       body: requestBody
+    }).catch((error: unknown) => {
+      throw headers.authorization ? withSettlementRiskGuidance(error) : error;
     });
 
     if (isReplacementPaymentResponse(first)) {

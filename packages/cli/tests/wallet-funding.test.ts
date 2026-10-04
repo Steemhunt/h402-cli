@@ -42,7 +42,6 @@ describe("wallet funding", () => {
     stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     loadConfig.mockResolvedValue({
       backendUrl: "https://h402.hunt.town",
-      wallets: { h402: { address: ADDR } },
       sessions: {}
     } satisfies CliConfig);
     getBaseUsdcBalance.mockReset();
@@ -93,7 +92,7 @@ describe("wallet funding", () => {
 
     stdout.mockClear();
     vi.stubEnv("H402_API_URL", undefined);
-    loadConfig.mockResolvedValueOnce({ backendUrl: "https://configured.example", wallets: { h402: { address: ADDR } }, sessions: {} });
+    loadConfig.mockResolvedValueOnce({ backendUrl: "https://configured.example", sessions: {} });
     await walletCommand(args());
     expect(printed(stdout).fundingUrl).toBe(`https://configured.example/wallet/fund?address=${ADDR}&amount=5`);
   });

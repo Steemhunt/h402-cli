@@ -15,7 +15,7 @@ npm install -g @h402/cli
 
 > The CLI uses [Open Wallet Standard](https://github.com/open-wallet-standard) core, whose wallet and signing methods lazy-load a platform package.
 >
-> OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot create, list, restore, or auto-adopt wallets, run `h402 auth`, or sign a payable call until OWS ships a matching native binding. `wallet address`, `wallet balance`, and `wallet fund` keep working for wallets already mapped in `~/.h402/config.json` — but USDC funded from an unsupported host can only be spent by signing on a supported platform. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
+> All wallet commands, `h402 auth`, and signing a payable call require OWS native bindings, available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `show`, `quote`, and free-route `call`, but cannot run wallet commands, `h402 auth`, or sign a payable call until OWS ships a matching native binding. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
 
 ## Quickstart
 
@@ -39,14 +39,15 @@ Calls hit the production backend (`https://h402.hunt.town`) by default — overr
 
 To select a default local signing wallet, add `"defaultWallet": "agent"` to your existing `~/.h402/config.json`, preserving its other fields. This applies to wallet creation, address, balance, funding instructions, authentication, and paid calls. Explicit `--name` or `--wallet` takes precedence; without this setting, the default remains `h402`. If the selected wallet is missing, the CLI reports an error instead of using another wallet. Existing bonus-credit sessions remain associated with the wallet that authenticated them; changing `defaultWallet` does not switch those sessions.
 
+OWS is the live source for wallet names and addresses; the CLI does not cache wallet addresses in config. `--name` resolves the current OWS wallet by name; `--wallet` selects the OWS wallet that currently owns that address. If both are passed, they must agree.
+
 ## Commands
 
 | Command | Description |
 | --- | --- |
 | `h402 wallet create --name <n>` | Create a local OWS signing wallet (does not create an auth session; prints its address) |
-| `h402 wallet list` | List OWS wallets |
-| `h402 wallet restore` | Re-adopt OWS wallets into `~/.h402/config.json` |
-| `h402 wallet address --name <n>` | Print the wallet address |
+| `h402 wallet list` | List current OWS wallets |
+| `h402 wallet address --name <n>` | Print the current OWS wallet address |
 | `h402 wallet balance --name <n>` | Show the wallet's structured Base USDC balance |
 | `h402 wallet fund --name <n>` | Share a Base USDC funding link; optionally wait for a new balance increase |
 | `h402 auth --name <n>` | Create an optional backend bonus-credit session with a wallet signature |
@@ -62,8 +63,8 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `--name <wallet>` | wallet create/address/balance/fund; auth; call | Wallet to use (default: `defaultWallet` in config, otherwise `h402`) |
-| `--wallet 0x...` | wallet address/balance/fund; auth; call | Sign with the local wallet that owns this address (must exist locally; must agree with `--name` if both are passed) |
+| `--name <wallet>` | wallet create/address/balance/fund; auth; call | OWS wallet name (default: `defaultWallet` in config, otherwise `h402`); existing wallets are resolved live |
+| `--wallet 0x...` | wallet address/balance/fund; auth; call | Select the current OWS wallet that owns this address (must agree with `--name` if both are passed) |
 | `--api-url <url>` | wallet fund; auth, credits, search, show, quote, call | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`); funding links use its origin |
 | `--amount <usdc>` | wallet fund | Suggested positive transfer amount, up to 6 decimal places (default `5`) |
 | `--wait` | wallet fund | Wait for a new balance increase; automatic on interactive terminals |
@@ -117,7 +118,7 @@ confirms that the original authorization was not paid.
 
 ## Agents & automation
 
-Every command prints JSON to stdout — `search`, `show`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`restore`/`address`/`balance`/`fund`.
+Every command prints JSON to stdout — `search`, `show`, `quote`, `call`, `auth`, `credits`, and `wallet create`/`list`/`address`/`balance`/`fund`.
 
 `wallet fund` returns `fundingUrl`, `suggestedAmount`, and `status: "awaiting_funds"` immediately in noninteractive use, without an RPC call. Share that link with the human, then use `h402 wallet fund --name agent --wait --timeout 300` to watch for funds. Interactive terminals print the link to stderr and wait automatically. Waiting reads the starting native Base USDC balance, polls every 10 seconds, and returns one JSON result with `status: "funded"`, `balance`, and `received` when the balance increases. The suggested amount only prefills the page: any positive increase is reported with its actual amount. Funds that arrived before the command started are already part of the baseline; use `h402 wallet balance` to check those. A timeout does not mean a transfer failed. RPC failures and timeouts exit non-zero with the funding link in `error.detail`, and the CLI never signs or broadcasts a funding transaction or opens a browser.
 
@@ -155,7 +156,7 @@ Signing needs no flags for the default passphrase-less wallets. Only when a wall
 | `H402_API_URL` | Backend base URL override (or `--api-url`; default `https://h402.hunt.town`) |
 | `H402_WALLET_PASSPHRASE` | Passphrase for passphrase-protected wallets (only needed when the wallet was created with one) |
 
-Passphrases are never stored. Wallets are passphrase-less by default; opt in at create time (`--passphrase <s>`, or bare `--passphrase` to be prompted) when a wallet guards meaningful funds. The CLI persists the backend URL, session tokens, known wallet addresses, and optional `defaultWallet` and `maxUsd` settings in `~/.h402/config.json`.
+Passphrases are never stored. Wallets are passphrase-less by default; opt in at create time (`--passphrase <s>`, or bare `--passphrase` to be prompted) when a wallet guards meaningful funds. The CLI persists the backend URL, session tokens, and optional `defaultWallet` and `maxUsd` settings in `~/.h402/config.json`.
 
 ## Contributing
 

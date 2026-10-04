@@ -3,20 +3,13 @@ import type { CliConfig as MockCliConfig } from "../src/config";
 import type { ParsedArgs } from "../src/utils";
 import { configMockFactory, owsMockFactory, printed } from "./helpers";
 
-const { createOwsWallet, getOwsWallet, listOwsWallets, getBaseUsdcBalance, loadConfig, updateConfig, updatedConfigs, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => {
-  const updatedConfigs: MockCliConfig[] = [];
+const { createOwsWallet, getOwsWallet, listOwsWallets, getBaseUsdcBalance, loadConfig, updateConfig, ADDR_AGENT, ADDR_ALT } = vi.hoisted(() => {
   const defaultConfig = (): MockCliConfig => ({
     backendUrl: "https://h402.hunt.town",
-    sessions: {},
-    wallets: { agent: { address: "0x1111111111111111111111111111111111111111" }, alt: { address: "0x2222222222222222222222222222222222222222" } }
+    sessions: {}
   });
   const loadConfig = vi.fn(async () => defaultConfig());
-  const updateConfig = vi.fn(async (updater: (config: MockCliConfig) => void | Promise<void>) => {
-    const draft: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
-    await updater(draft);
-    updatedConfigs.push(draft);
-    return draft;
-  });
+  const updateConfig = vi.fn();
   return {
     createOwsWallet: vi.fn(),
     getOwsWallet: vi.fn(),
@@ -24,7 +17,6 @@ const { createOwsWallet, getOwsWallet, listOwsWallets, getBaseUsdcBalance, loadC
     getBaseUsdcBalance: vi.fn(async () => ({ microUsdc: "955900", usdc: "0.955900" })),
     loadConfig,
     updateConfig,
-    updatedConfigs,
     ADDR_AGENT: "0x1111111111111111111111111111111111111111",
     ADDR_ALT: "0x2222222222222222222222222222222222222222"
   };
@@ -54,14 +46,12 @@ describe("walletCommand balance/fund wallet selection", () => {
   beforeEach(() => {
     loadConfig.mockResolvedValue({
       backendUrl: "https://h402.hunt.town",
-      sessions: {},
-      wallets: { agent: { address: ADDR_AGENT }, alt: { address: ADDR_ALT } }
+      sessions: {}
     });
     updateConfig.mockClear();
-    updatedConfigs.length = 0;
     createOwsWallet.mockReset();
-    getOwsWallet.mockReset();
-    listOwsWallets.mockReset();
+    getOwsWallet.mockReset().mockImplementation(async (name: string) => ({ name, address: name === "alt" ? ADDR_ALT : ADDR_AGENT }));
+    listOwsWallets.mockReset().mockResolvedValue([{ name: "agent", address: ADDR_AGENT }, { name: "alt", address: ADDR_ALT }]);
     getBaseUsdcBalance.mockClear();
     getBaseUsdcBalance.mockResolvedValue({ microUsdc: "955900", usdc: "0.955900" });
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -85,7 +75,6 @@ describe("walletCommand balance/fund wallet selection", () => {
     loadConfig.mockResolvedValueOnce({
       backendUrl: "https://h402.hunt.town",
       sessions: {},
-      wallets: { agent: { address: ADDR_AGENT }, alt: { address: ADDR_ALT } },
       defaultWallet: "alt"
     });
 
@@ -95,7 +84,7 @@ describe("walletCommand balance/fund wallet selection", () => {
   });
 
   it.each([{ flags: {}, name: "agent" }, { flags: { name: "alt" }, name: "alt" }])("selects $name for creation with a configured default", async ({ flags, name }) => {
-    loadConfig.mockResolvedValueOnce({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {}, defaultWallet: "agent" });
+    loadConfig.mockResolvedValueOnce({ backendUrl: "https://h402.hunt.town", sessions: {}, defaultWallet: "agent" });
     createOwsWallet.mockResolvedValueOnce({ name, address: ADDR_AGENT });
 
     await walletCommand(args(flags, "create"));
@@ -132,40 +121,34 @@ describe("walletCommand balance/fund wallet selection", () => {
     expect(createOwsWallet).not.toHaveBeenCalled();
   });
 
-  it("persists and prints a newly created wallet", async () => {
-    createOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_AGENT });
-    const loaded: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
-    loadConfig.mockResolvedValueOnce(loaded);
-
-    await walletCommand(args({ name: "agent" }, "create"));
-
-    expect(updatedConfigs).toEqual([
-      {
-        backendUrl: "https://h402.hunt.town",
-        sessions: {},
-        wallets: { agent: { address: ADDR_AGENT } }
-      }
-    ]);
-    // The in-memory config loaded at command entry adopts the wallet too, in
-    // memory-then-durable order, matching the by-name/by-address/restore paths.
-    expect(loaded.wallets).toEqual({ agent: { address: ADDR_AGENT } });
-    expect(printed(stdout)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
+  it.each(["agent", "__proto__"])("prints newly created native wallet %s without writing an address cache", async (name) => {
+    createOwsWallet.mockResolvedValueOnce({ name, address: ADDR_AGENT });
+    await walletCommand(args({ name }, "create"));
+    expect(printed(stdout)).toEqual({ wallet: { name, address: ADDR_AGENT } });
+    expect(updateConfig).not.toHaveBeenCalled();
   });
 
-  it("re-adopts an OWS wallet by address when the h402 config mapping is missing", async () => {
-    loadConfig.mockResolvedValueOnce({ backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} });
-    listOwsWallets.mockResolvedValueOnce([{ name: "alt", address: ADDR_ALT.toUpperCase() }]);
+  it.each(["address", "balance", "fund"])("reads a recreated wallet's current native address for %s", async (subcommand) => {
+    await walletCommand(args({ name: "agent" }, subcommand));
+    expect(printed(stdout).wallet.address).toBe(ADDR_AGENT);
+    stdout.mockClear();
+    getOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_ALT });
+    await walletCommand(args({ name: "agent" }, subcommand));
+    expect(printed(stdout).wallet.address).toBe(ADDR_ALT);
+    if (subcommand === "fund") expect(printed(stdout).fundingUrl).toContain(ADDR_ALT);
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
 
-    await walletCommand(args({ wallet: ADDR_ALT }, "address"));
+  it.each(["wallet not found", "native bindings unavailable", "permission denied"])("stops funding on %s without returning a funding link", async (message) => {
+    getOwsWallet.mockRejectedValueOnce(new Error(message));
+    await expect(walletCommand(args({ name: "agent" }, "fund"))).rejects.toThrow(message);
+    expect(stdout).not.toHaveBeenCalled();
+    expect(getBaseUsdcBalance).not.toHaveBeenCalled();
+  });
 
-    expect(updatedConfigs).toEqual([
-      {
-        backendUrl: "https://h402.hunt.town",
-        sessions: {},
-        wallets: { alt: { address: ADDR_ALT } }
-      }
-    ]);
-    expect(printed(stdout)).toEqual({ wallet: { name: "alt", address: ADDR_ALT } });
+  it("rejects the removed restore command without reading the vault", async () => {
+    await expect(walletCommand(args({}, "restore"))).rejects.toThrow("Unknown wallet subcommand: restore");
+    expect(listOwsWallets).not.toHaveBeenCalled();
   });
 
   it("accepts --name and --wallet together when they agree", async () => {
@@ -177,34 +160,9 @@ describe("walletCommand balance/fund wallet selection", () => {
     createOwsWallet.mockRejectedValueOnce(new Error("wallet name already exists: 'agent'"));
 
     await expect(walletCommand(args({ name: "agent" }, "create"))).rejects.toThrow(
-      /Wallet "agent" already exists.*h402 wallet address --name agent.*h402 wallet restore/
+      /Wallet "agent" already exists.*h402 wallet address --name agent/
     );
     expect(updateConfig).not.toHaveBeenCalled();
-  });
-
-  it("re-adopts an OWS wallet by name when the h402 config mapping is missing", async () => {
-    const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
-    loadConfig.mockResolvedValueOnce(config);
-    getOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_AGENT });
-
-    await walletCommand(args({ name: "agent" }, "address"));
-
-    expect(updatedConfigs).toEqual([
-      {
-        backendUrl: "https://h402.hunt.town",
-        sessions: {},
-        wallets: { agent: { address: ADDR_AGENT } }
-      }
-    ]);
-    expect(printed(stdout)).toEqual({ wallet: { name: "agent", address: ADDR_AGENT } });
-  });
-
-  it("rejects --wallet mismatches even after re-adopting an OWS wallet by name", async () => {
-    const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
-    loadConfig.mockResolvedValueOnce(config);
-    getOwsWallet.mockResolvedValueOnce({ name: "agent", address: ADDR_AGENT });
-
-    await expect(walletCommand(args({ name: "agent", wallet: ADDR_ALT }, "address"))).rejects.toThrow(/does not match wallet "agent"/);
   });
 
   it("lists OWS wallets without changing config", async () => {
@@ -224,32 +182,7 @@ describe("walletCommand balance/fund wallet selection", () => {
     });
   });
 
-  it("restores OWS wallets into config", async () => {
-    const config: MockCliConfig = { backendUrl: "https://h402.hunt.town", sessions: {}, wallets: {} };
-    loadConfig.mockResolvedValueOnce(config);
-    listOwsWallets.mockResolvedValueOnce([
-      { name: "agent", address: ADDR_AGENT },
-      { name: "alt", address: ADDR_ALT.toUpperCase() }
-    ]);
-
-    await walletCommand(args({}, "restore"));
-
-    expect(updatedConfigs).toEqual([
-      {
-        backendUrl: "https://h402.hunt.town",
-        sessions: {},
-        wallets: { agent: { address: ADDR_AGENT }, alt: { address: ADDR_ALT } }
-      }
-    ]);
-    expect(printed(stdout)).toEqual({
-      wallets: [
-        { name: "agent", address: ADDR_AGENT },
-        { name: "alt", address: ADDR_ALT }
-      ]
-    });
-  });
-
-  it("rejects --wallet that disagrees with --name before calling OWS", async () => {
+  it("rejects conflicting wallet selectors before reading the balance", async () => {
     await expect(walletCommand(args({ name: "agent", wallet: ADDR_ALT }, "balance"))).rejects.toThrow(/does not match wallet "agent"/);
     expect(getBaseUsdcBalance).not.toHaveBeenCalled();
   });

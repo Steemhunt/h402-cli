@@ -47,9 +47,11 @@ The CLI targets the production backend (`https://h402.hunt.town`) by default; se
 
 Set `"defaultWallet": "agent"` in the existing `~/.h402/config.json` to select a default local signing wallet. Explicit `--name` or `--wallet` takes precedence; without this setting, the default remains `h402`. The CLI fails if the selected wallet is missing rather than using a different wallet.
 
+OWS is the live source for wallet names and addresses; the CLI does not cache wallet addresses in config. `--name` resolves the current OWS wallet by name; `--wallet` selects the OWS wallet that currently owns that address. If both are passed, they must agree.
+
 The CLI signs locally through [Open Wallet Standard](https://github.com/open-wallet-standard) core, whose wallet and signing methods lazy-load a platform package.
 
-OWS wallet creation and signing use native bindings available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `quote`, and free-route `call`, but cannot create, list, restore, or auto-adopt wallets, run `h402 auth`, or sign a payable call until OWS ships a matching native binding. `wallet address`, `wallet balance`, and `wallet fund` keep working for wallets already mapped in `~/.h402/config.json` — but USDC funded from an unsupported host can only be spent by signing on a supported platform. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
+All wallet commands, `h402 auth`, and signing a payable call require OWS native bindings, available only on macOS and glibc-based Linux, on x64 or arm64. Windows, musl/Alpine, and other OS/architecture combinations can still run `--help`, `search`, `show`, `quote`, and free-route `call`, but cannot run wallet commands, `h402 auth`, or sign a payable call until OWS ships a matching native binding. Before creating or funding a wallet, run `h402 wallet list` as a read-only native-binding preflight.
 
 ## How it works
 

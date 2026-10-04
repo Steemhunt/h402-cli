@@ -70,7 +70,7 @@ describe("provider-first catalog commands", () => {
   let stdout: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {}, wallets: {} });
+    loadConfig.mockResolvedValue({ backendUrl: "https://test.example", sessions: {} });
   });
   afterEach(() => {
     stdout.mockRestore();

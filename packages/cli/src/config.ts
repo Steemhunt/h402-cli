@@ -8,7 +8,6 @@ import { isRecord } from "./utils.js";
 export type CliConfig = {
   backendUrl: string;
   sessions: Record<string, string>;
-  wallets: Record<string, { address?: string }>;
   defaultWallet?: string;
   maxUsd?: string;
 };
@@ -22,17 +21,19 @@ function configPath() {
 }
 
 function defaultConfig(): CliConfig {
-  return { backendUrl: DEFAULT_BACKEND_URL, sessions: {}, wallets: {} };
+  return { backendUrl: DEFAULT_BACKEND_URL, sessions: {} };
 }
 
 function normalizeConfig(parsed: Record<string, unknown>): CliConfig {
   const defaults = defaultConfig();
   const normalized: CliConfig = {
     backendUrl: typeof parsed.backendUrl === "string" ? parsed.backendUrl : defaults.backendUrl,
-    sessions: isRecord(parsed.sessions) ? (parsed.sessions as Record<string, string>) : {},
-    wallets: isRecord(parsed.wallets) ? (parsed.wallets as CliConfig["wallets"]) : {}
+    sessions: isRecord(parsed.sessions) ? (parsed.sessions as Record<string, string>) : {}
   };
-  if (typeof parsed.maxUsd === "string") {
+  if (parsed.maxUsd !== undefined) {
+    if (typeof parsed.maxUsd !== "string") {
+      throw new Error('h402 config maxUsd must be a string amount, for example "0.05".');
+    }
     normalized.maxUsd = parsed.maxUsd;
   }
   if (parsed.defaultWallet !== undefined) {
@@ -67,13 +68,13 @@ async function readConfigFile(file: string): Promise<CliConfig | undefined> {
     parsed = undefined;
   }
   // Surface malformed config instead of overwriting it and losing the session
-  // tokens and wallet mappings it holds.
+  // tokens it holds.
   if (!isRecord(parsed)) {
-    throw new Error(`h402 config at ${file} is not a valid config object. Fix or remove it (it holds your session tokens and known wallets).`);
+    throw new Error(`h402 config at ${file} is not a valid config object. Fix or remove it (it holds your session tokens).`);
   }
   // Normalize to the CliConfig shape so a sparse or partial file (e.g. `{}` or a
-  // missing/mistyped sessions/wallets key) yields a usable config instead of
-  // crashing later when a command reads config.sessions / config.wallets.
+  // missing/mistyped sessions key) yields a usable config instead of crashing
+  // later when a command reads config.sessions.
   return normalizeConfig(parsed);
 }
 
@@ -84,8 +85,7 @@ export async function loadConfig(): Promise<CliConfig> {
 function cloneConfig(config: CliConfig): CliConfig {
   const cloned: CliConfig = {
     backendUrl: config.backendUrl,
-    sessions: { ...config.sessions },
-    wallets: Object.fromEntries(Object.entries(config.wallets).map(([name, wallet]) => [name, { ...wallet }]))
+    sessions: { ...config.sessions }
   };
   if (config.maxUsd !== undefined) {
     cloned.maxUsd = config.maxUsd;
