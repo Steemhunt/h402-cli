@@ -37,7 +37,7 @@ Browsing, quoting, and free-route calls do not require a local wallet. Wallet cr
 
 Calls hit the production backend (`https://h402.hunt.town`) by default — override with `--api-url` or `H402_API_URL` (e.g. `http://localhost:3000` for local dev).
 
-To select a default local signing wallet, add `"defaultWallet": "agent"` to your existing `~/.h402/config.json`, preserving its other fields. This applies to wallet creation, address, balance, funding instructions, authentication, and paid calls. Explicit `--name` or `--wallet` takes precedence; without this setting, the default remains `h402`. If the selected wallet is missing, the CLI reports an error instead of using another wallet. Existing bonus-credit sessions remain associated with the wallet that authenticated them; changing `defaultWallet` does not switch those sessions.
+To select a default local signing wallet, add `"defaultWallet": "agent"` to your existing `~/.h402/config.json`, preserving its other fields. This applies to wallet creation, address, balance, funding links, authentication, and paid calls. Explicit `--name` or `--wallet` takes precedence; without this setting, the default remains `h402`. If the selected wallet is missing, the CLI reports an error instead of using another wallet. Existing bonus-credit sessions remain associated with the wallet that authenticated them; changing `defaultWallet` does not switch those sessions.
 
 OWS is the live source for wallet names and addresses; the CLI does not cache wallet addresses in config. `--name` resolves the current OWS wallet by name; `--wallet` selects the OWS wallet that currently owns that address. If both are passed, they must agree.
 
@@ -63,7 +63,7 @@ Run `h402 --help`, `h402 <command> --help`, or `h402 wallet <subcommand> --help`
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `--name <wallet>` | wallet create/address/balance/fund; auth; call | OWS wallet name (default: `defaultWallet` in config, otherwise `h402`); existing wallets are resolved live |
+| `--name <wallet>` | wallet create/address/balance/fund; auth; call | OWS wallet name (default: `defaultWallet` in config, otherwise `h402`); `wallet create` names the new wallet, every other command resolves the existing wallet live |
 | `--wallet 0x...` | wallet address/balance/fund; auth; call | Select the current OWS wallet that owns this address (must agree with `--name` if both are passed) |
 | `--api-url <url>` | wallet fund; auth, credits, search, show, quote, call | Backend base URL override (or `H402_API_URL`; default `https://h402.hunt.town`); funding links use its origin |
 | `--amount <usdc>` | wallet fund | Suggested positive transfer amount, up to 6 decimal places (default `5`) |
