@@ -18,6 +18,7 @@ type CommandSpec = {
 // accepts them — mirrors the README flags table).
 const FLAGS = {
   name: { name: "name", value: "<wallet>", desc: "OWS wallet name (default: config.defaultWallet, otherwise h402); existing wallets are resolved live" },
+  createName: { name: "name", value: "<wallet>", desc: "Name for the new OWS wallet (default: config.defaultWallet, otherwise h402); fails if it already exists" },
   wallet: { name: "wallet", value: "0x...", desc: "Current OWS wallet address (must agree with --name)" },
   apiUrl: { name: "api-url", value: "<url>", desc: "Backend base URL (or H402_API_URL; default https://h402.hunt.town)" },
   json: { name: "json", value: "'{...}'", desc: "Request body (sets method to POST)" },
@@ -47,7 +48,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
       create: {
         usage: "h402 wallet create [flags]",
         summary: "Create a local OWS signing wallet (no auth session; passphrase-less by default; prints its address)",
-        flags: [FLAGS.name, FLAGS.passphrase, FLAGS.noPassphrase],
+        flags: [FLAGS.createName, FLAGS.passphrase, FLAGS.noPassphrase],
         examples: ["h402 wallet create --name agent"]
       },
       list: { usage: "h402 wallet list", summary: "List current OWS wallets", flags: [] },
