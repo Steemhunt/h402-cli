@@ -134,7 +134,7 @@ function isExistingOwsWalletError(error: unknown) {
 // Read the current wallet directly from OWS for every wallet operation.
 // `--name` selects by name; `--wallet` pins a current native wallet address.
 // Both selectors must agree; CLI config only provides the default name.
-export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig): Promise<{ name: string; address: string }> {
+export async function resolveSigningWallet(args: ParsedArgs, config?: CliConfig): Promise<ResolvedWallet> {
   config ??= await loadConfig();
   const explicitAddress = flagString(args.flags, "wallet")?.toLowerCase();
   const explicitName = flagString(args.flags, "name");

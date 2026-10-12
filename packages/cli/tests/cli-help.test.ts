@@ -91,6 +91,12 @@ describe("help rendering", () => {
     expect(resolveCommandPath(["wallet", "restore"])).toEqual(["wallet"]);
   });
 
+  it("describes --name on wallet create as the new wallet's name", () => {
+    const help = commandHelp(["wallet", "create"]);
+    expect(help).toContain("Name for the new OWS wallet");
+    expect(help).not.toContain("resolved live");
+  });
+
   it("documents live OWS name and address selection", () => {
     for (const command of [["wallet", "address"], ["wallet", "balance"], ["wallet", "fund"], ["auth"], ["call"]]) {
       const help = commandHelp(command);
