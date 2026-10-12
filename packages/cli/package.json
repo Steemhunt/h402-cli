@@ -1,6 +1,6 @@
 {
   "name": "@h402/cli",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Local, non-custodial CLI for h402 — browse the catalog and pay per call in Base USDC over x402 from a local wallet.",
   "license": "MIT",
   "type": "module",
@@ -45,7 +45,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@h402/core": "^0.1.0",
+    "@h402/core": "^0.1.1",
     "@open-wallet-standard/core": "^1.4.3",
     "fs-native-extensions": "^1.5.1",
     "undici": "^8.11.2"
