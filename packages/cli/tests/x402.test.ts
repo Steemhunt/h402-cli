@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { BASE_NETWORK, BASE_USDC_ADDRESS, selectExactRequirement, type X402PaymentRequired } from "@h402/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { BASE_NETWORK, BASE_USDC_ADDRESS, decodeX402Header, selectExactRequirement, type X402PaymentPayload, type X402PaymentRequired } from "@h402/core";
 import { BASE_USDC_REQUIREMENT_OPTIONS, createPaymentSignatureHeader } from "../src/x402";
+
+const { signOwsTypedData } = vi.hoisted(() => ({
+  signOwsTypedData: vi.fn(async () => `0x${"11".repeat(65)}`)
+}));
+vi.mock("../src/ows.js", () => ({ signOwsTypedData }));
 
 const usdcRequirement = {
   scheme: "exact" as const,
@@ -67,21 +72,53 @@ describe("BASE_USDC_REQUIREMENT_OPTIONS", () => {
 });
 
 describe("createPaymentSignatureHeader guards", () => {
+  beforeEach(() => signOwsTypedData.mockClear());
+
   it("refuses to sign a non-USDC challenge before touching the wallet", async () => {
     await expect(
       createPaymentSignatureHeader({ paymentRequired: challenge({ ...usdcRequirement, asset: "0xdeadbeef00000000000000000000000000000000" }), ...DUMMY })
     ).rejects.toThrow(/only signs Base USDC/);
+    expect(signOwsTypedData).not.toHaveBeenCalled();
   });
 
   it("refuses to sign a native-transfer challenge", async () => {
     await expect(
       createPaymentSignatureHeader({ paymentRequired: challenge({ ...usdcRequirement, extra: { assetTransferMethod: "native" } }), ...DUMMY })
     ).rejects.toThrow(/only signs Base USDC/);
+    expect(signOwsTypedData).not.toHaveBeenCalled();
   });
 
   it("refuses to sign a wrong-network challenge", async () => {
     await expect(
       createPaymentSignatureHeader({ paymentRequired: challenge({ ...usdcRequirement, network: "eip155:1" }), ...DUMMY })
     ).rejects.toThrow(/only signs Base USDC/);
+    expect(signOwsTypedData).not.toHaveBeenCalled();
+  });
+
+  it("caps the signed authorization while retaining the original quoted requirement", async () => {
+    const accepted = { ...usdcRequirement, maxTimeoutSeconds: 1_791_788_437, extra: { assetTransferMethod: "eip3009" } };
+    const paymentRequired: X402PaymentRequired = {
+      ...challenge(accepted),
+      resource: { url: "https://provider.test/tool", mimeType: "application/json" },
+      extensions: { example: { reference: "quoted-context" } }
+    };
+    const original = structuredClone(paymentRequired);
+    const header = await createPaymentSignatureHeader({ paymentRequired, ...DUMMY, authorizationNow: 1_000 });
+    const payload = decodeX402Header<X402PaymentPayload>(header);
+
+    expect(payload.accepted).toEqual(accepted);
+    expect(paymentRequired).toEqual(original);
+    expect(payload.payload.authorization).toMatchObject({
+      from: DUMMY.walletAddress,
+      to: accepted.payTo,
+      value: accepted.amount,
+      validAfter: "940",
+      validBefore: "1720",
+      nonce: expect.stringMatching(/^0x[a-f0-9]{64}$/)
+    });
+    expect(signOwsTypedData).toHaveBeenCalledTimes(1);
+    expect(signOwsTypedData).toHaveBeenCalledWith(
+      DUMMY.walletName, expect.objectContaining({ message: payload.payload.authorization }), undefined
+    );
   });
 });
