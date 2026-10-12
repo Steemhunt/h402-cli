@@ -18,6 +18,7 @@ export function createNonce(): `0x${string}` {
 }
 
 const VALID_AFTER_CLOCK_SKEW_SECONDS = 60;
+const MAX_AUTHORIZATION_LIFETIME_SECONDS = 12 * 60;
 
 /**
  * Build the EIP-3009 authorization fields (string-valued, signer-agnostic) for an
@@ -31,15 +32,17 @@ export function buildTransferAuthorization(input: {
   maxTimeoutSeconds: number;
   now?: number;
 }): TransferAuthorization {
+  if (!Number.isFinite(input.maxTimeoutSeconds)) {
+    throw new Error("Payment timeout must be a finite number.");
+  }
   const now = input.now ?? Math.floor(Date.now() / 1000);
   return {
     from: input.from,
     to: input.to,
     value: input.amount,
     validAfter: String(now - VALID_AFTER_CLOCK_SKEW_SECONDS),
-    // Floor defensively: a fractional timeout from an upstream challenge would
-    // produce a non-integer uint256 string that wallets reject.
-    validBefore: String(now + Math.floor(input.maxTimeoutSeconds)),
+    // Keep uint256 values integral and limit how long an unused signature can settle.
+    validBefore: String(now + Math.min(Math.floor(input.maxTimeoutSeconds), MAX_AUTHORIZATION_LIFETIME_SECONDS)),
     nonce: createNonce()
   };
 }

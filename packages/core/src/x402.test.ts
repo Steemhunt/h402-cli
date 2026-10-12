@@ -93,13 +93,17 @@ describe("selectExactRequirement", () => {
 });
 
 describe("buildTransferAuthorization", () => {
+  const authorizationInput = {
+    from: "0xfrom000000000000000000000000000000000000",
+    to: "0xto00000000000000000000000000000000000000",
+    amount: "50000",
+    now: 1_000
+  } as const;
+
   it("derives the validity window from a fixed clock", () => {
     const authorization = buildTransferAuthorization({
-      from: "0xfrom000000000000000000000000000000000000",
-      to: "0xto00000000000000000000000000000000000000",
-      amount: "50000",
-      maxTimeoutSeconds: 120,
-      now: 1_000
+      ...authorizationInput,
+      maxTimeoutSeconds: 120
     });
     expect(authorization.validAfter).toBe("940");
     expect(Number(authorization.validBefore) - Number(authorization.validAfter)).toBe(180);
@@ -110,13 +114,29 @@ describe("buildTransferAuthorization", () => {
 
   it("floors fractional timeouts so uint256 strings stay integral", () => {
     const authorization = buildTransferAuthorization({
-      from: "0xfrom000000000000000000000000000000000000",
-      to: "0xto00000000000000000000000000000000000000",
-      amount: "50000",
-      maxTimeoutSeconds: 1617.5364150211697,
-      now: 1_000
+      ...authorizationInput,
+      maxTimeoutSeconds: 161.5364150211697
     });
-    expect(authorization.validBefore).toBe("2617");
+    expect(authorization.validBefore).toBe("1161");
+  });
+
+  it.each([
+    [30, 30],
+    [300, 300],
+    [720, 720],
+    [721, 720],
+    [3600, 720],
+    [1791788437, 720]
+  ])("bounds a %i-second timeout to %i seconds without extending shorter lifetimes", (maxTimeoutSeconds, expectedLifetime) => {
+    const authorization = buildTransferAuthorization({
+      ...authorizationInput,
+      maxTimeoutSeconds
+    });
+    expect(authorization.validBefore).toBe(String(1_000 + expectedLifetime));
+  });
+
+  it.each([Infinity, -Infinity, NaN])("rejects a non-finite timeout (%s) before capping it", (maxTimeoutSeconds) => {
+    expect(() => buildTransferAuthorization({ ...authorizationInput, maxTimeoutSeconds })).toThrow("Payment timeout must be a finite number.");
   });
 
   it("creates unique 32-byte nonces", () => {

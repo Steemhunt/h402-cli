@@ -20,6 +20,8 @@ npm install @h402/core
 - **Headers** — `encodeX402Header` / `decodeX402Header`, `paymentRequiredFromResponse`, `parsePaymentRequiredHeader`, `parsePaymentSignatureHeader`, plus the `X402_HEADERS` names.
 - **EIP-3009** — `buildTransferAuthorization`, `createNonce`, `selectExactRequirement`.
 
+`buildTransferAuthorization` caps expiry at 12 minutes from signing and preserves shorter quoted timeouts. Non-finite timeouts are rejected before capping. This limits future signatures without changing the original accepted payment requirement or revoking existing authorizations.
+
 > `selectExactRequirement` is intentionally h402-opinionated about scheme and network: by default it selects the first `exact` requirement on strict CAIP-2 `eip155:8453`, but it does not pin the asset or transfer method unless you pass `matchAsset` / `requireEip3009`. It deliberately does not replicate the h402 server's inbound tolerance for non-h402 x402 providers, such as short-form network names (`base`/`8453`) or cheapest-of-many menus. If you integrate against a non-h402 x402 server with those shapes, build on the header/types/EIP-3009 primitives and supply your own selector.
 
 ## Usage
