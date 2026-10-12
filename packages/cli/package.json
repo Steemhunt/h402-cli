@@ -46,8 +46,8 @@
   },
   "dependencies": {
     "@h402/core": "^0.1.0",
-    "@open-wallet-standard/core": "^1.4.2",
+    "@open-wallet-standard/core": "^1.4.3",
     "fs-native-extensions": "^1.5.1",
-    "undici": "^8.10.2"
+    "undici": "^8.11.2"
   }
 }
